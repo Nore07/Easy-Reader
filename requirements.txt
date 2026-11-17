@@ -1,0 +1,4 @@
+# Runtime dependencies; exact validated versions are recorded in requirements-lock.txt.
+PySide6-Essentials>=6.8,<6.13
+charset-normalizer>=3.4,<4
+defusedxml>=0.7.1,<1
