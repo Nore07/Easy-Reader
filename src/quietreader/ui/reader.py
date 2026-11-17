@@ -98,7 +98,7 @@ class PageView(QWidget):
     def paintEvent(self, event):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.TextAntialiasing)
-        c = colors(self.settings.theme)
+        c = colors(self.settings.theme, self.settings.background_color if self.settings.floating else "")
         painter.setPen(QColor(c["ink"]))
         if not self.text:
             box = QRectF(self.rect()).adjusted(25, 10, -25, -10)

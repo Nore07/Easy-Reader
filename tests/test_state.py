@@ -8,10 +8,21 @@ from quietreader.desktop.geometry import visible_bounds
 def test_settings_clamp_and_shortcut_validation():
     settings = Settings.from_dict({"font_size": 0, "opacity": 0.01, "line_height": 99, "theme": "bad", "hotkey": "PageDown"})
     assert settings.font_size == 14
-    assert settings.opacity >= 0.55
+    assert settings.opacity == 0.01
     assert settings.line_height <= 2.5
     assert settings.theme == "system"
     assert settings.hotkey == "Ctrl+Alt+R"
+
+
+def test_transparent_background_and_color_survive_save(tmp_path):
+    settings = Settings.from_dict({"opacity": 0, "background_color": "#aBc123"})
+    assert settings.opacity == 0
+    assert settings.background_color == "#abc123"
+    assert Settings.from_dict({"background_color": "url(file:///bad)"}).background_color == ""
+    store = StateStore(tmp_path)
+    store.state["settings"] = settings.to_dict()
+    store.save()
+    assert StateStore(tmp_path).state["settings"]["background_color"] == "#abc123"
 
 
 def test_anchor_survives_layout_change():

@@ -66,6 +66,14 @@ class DragHeader(QWidget):
             super().mousePressEvent(event)
 
 
+class DragHandle(QPushButton):
+    def mousePressEvent(self, event):
+        if event.button() == Qt.MouseButton.LeftButton and self.window().windowHandle():
+            self.window().windowHandle().startSystemMove()
+        else:
+            super().mousePressEvent(event)
+
+
 class MainWindow(QMainWindow):
     def __init__(self, store, enable_system=True):
         super().__init__()
@@ -135,6 +143,11 @@ class MainWindow(QMainWindow):
         self.eyebrow.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
         top.addWidget(self.eyebrow)
         top.addStretch()
+        self.drag_handle = DragHandle("⠿")
+        self.drag_handle.setToolTip("按住拖动浮窗（全透明时也可使用）")
+        self.drag_handle.setAccessibleName("拖动浮窗")
+        self.drag_handle.setFixedWidth(32)
+        top.addWidget(self.drag_handle)
         self.open_button = self._button("打开", self.choose_file)
         self.open_button.setObjectName("primary")
         self.open_button.setToolTip("打开本地 TXT / EPUB · Ctrl+O")
@@ -418,16 +431,19 @@ class MainWindow(QMainWindow):
         was_visible = self.isVisible()
         bounds = self.geometry()
         flags = Qt.WindowType.Tool | Qt.WindowType.FramelessWindowHint if settings.floating else Qt.WindowType.Window
+        if settings.floating:
+            flags |= Qt.WindowType.NoDropShadowWindowHint
         if settings.always_on_top:
             flags |= Qt.WindowType.WindowStaysOnTopHint
         if self.windowFlags() != flags:
             self.setWindowFlags(flags)
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, settings.floating)
         self.setGeometry(bounds)
-        self.setStyleSheet(stylesheet(colors(settings.theme), round(settings.opacity * 255) if settings.floating else 255))
+        self.setStyleSheet(stylesheet(colors(settings.theme, settings.background_color if settings.floating else ""), round(settings.opacity * 255) if settings.floating else 255))
         self.float_button.setChecked(settings.floating)
         self.pin_button.setChecked(settings.always_on_top)
         self.close_button.setVisible(settings.floating)
+        self.drag_handle.setVisible(settings.floating)
         self.reader.apply_settings(settings)
         self.sidebar.setVisible(self.sidebar_requested and not settings.floating and self.width() >= 700)
         if was_visible:
@@ -446,7 +462,7 @@ class MainWindow(QMainWindow):
 
     def _system_theme_changed(self, *args):
         if self.settings.theme == "system":
-            self.setStyleSheet(stylesheet(colors("system"), round(self.settings.opacity * 255) if self.settings.floating else 255))
+            self.setStyleSheet(stylesheet(colors("system", self.settings.background_color if self.settings.floating else ""), round(self.settings.opacity * 255) if self.settings.floating else 255))
             self.reader.update()
 
     def _screen_removed(self, *args):

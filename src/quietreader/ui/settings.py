@@ -1,11 +1,12 @@
-from PySide6.QtGui import QFont
+from PySide6.QtGui import QColor, QFont
 from PySide6.QtWidgets import (
-    QCheckBox, QComboBox, QDialog, QDialogButtonBox, QDoubleSpinBox,
+    QCheckBox, QColorDialog, QComboBox, QDialog, QDialogButtonBox, QDoubleSpinBox,
     QFontComboBox, QFormLayout, QLabel, QLineEdit, QMessageBox,
-    QScrollArea, QSpinBox, QVBoxLayout, QWidget,
+    QHBoxLayout, QPushButton, QScrollArea, QSpinBox, QVBoxLayout, QWidget,
 )
 
 from quietreader.domain.models import Settings, valid_hotkey
+from quietreader.desktop.color_picker import DesktopColorPicker
 
 
 class SettingsDialog(QDialog):
@@ -33,13 +34,27 @@ class SettingsDialog(QDialog):
         self.font = QFontComboBox()
         self.font.setCurrentFont(QFont(settings.font_family))
         form.addRow("字体", self.font)
+        self.background_color = settings.background_color
+        self.color_label = QLabel()
+        self.color_label.setMinimumWidth(80)
+        self.picker = DesktopColorPicker(self)
+        self.picker.selected.connect(self.set_background_color)
+        self.picker.failed.connect(lambda message: QMessageBox.warning(self, "桌面取色", message))
+        color_row = QHBoxLayout()
+        color_row.addWidget(self.color_label)
+        for text, callback in [("选择颜色", self.choose_background_color), ("桌面取色", self.picker.begin), ("跟随主题", self.reset_background_color)]:
+            button = QPushButton(text)
+            button.clicked.connect(callback)
+            color_row.addWidget(button)
+        form.addRow("浮窗背景色", color_row)
+        self._update_color_label()
         for key, label, low, high, step in [
             ("font_size", "字号（像素）", 14, 42, 1),
             ("line_height", "行距倍数", 1.2, 2.5, 0.1),
             ("letter_spacing", "字距（像素）", 0.0, 5.0, 0.1),
             ("paragraph_spacing", "段距（像素）", 0, 40, 1),
             ("padding", "页边距（像素）", 12, 72, 2),
-            ("opacity", "浮窗背景不透明度", 0.55, 1.0, 0.05),
+            ("opacity", "浮窗背景不透明度", 0.0, 1.0, 0.05),
         ]:
             field = QDoubleSpinBox() if isinstance(step, float) else QSpinBox()
             field.setRange(low, high)
@@ -47,7 +62,7 @@ class SettingsDialog(QDialog):
             field.setValue(getattr(settings, key))
             form.addRow(label, field)
             self.fields[key] = field
-        note = QLabel("半透明仅用于浮窗；文字保持不透明。\n若背景复杂，建议提高背景不透明度。")
+        note = QLabel("设为 0 即全透明，文字保持不透明；仅在浮窗生效。\n取色时窗口会暂时消失，单击选择，Esc / 右键取消。\n取色结果仅保存在本机；背景变化后可重新取色。")
         note.setObjectName("status")
         form.addRow(note)
         for key, label in [("floating", "使用阅读浮窗"), ("always_on_top", "窗口始终置顶"), ("close_to_tray", "关闭窗口时隐藏至托盘"), ("global_hotkey", "启用全局显示 / 隐藏快捷键")]:
@@ -83,6 +98,7 @@ class SettingsDialog(QDialog):
         self.theme.setCurrentIndex(0)
         self.font.setCurrentFont(QFont(defaults.font_family))
         self.hotkey.setText(defaults.hotkey)
+        self.reset_background_color()
         for key, field in self.fields.items():
             value = getattr(defaults, key)
             if isinstance(field, QCheckBox):
@@ -93,7 +109,7 @@ class SettingsDialog(QDialog):
                 field.setValue(value)
 
     def values(self):
-        data = {"theme": self.theme.currentData(), "font_family": self.font.currentFont().family(), "hotkey": self.hotkey.text().strip()}
+        data = {"theme": self.theme.currentData(), "background_color": self.background_color, "font_family": self.font.currentFont().family(), "hotkey": self.hotkey.text().strip()}
         for key, field in self.fields.items():
             if isinstance(field, QCheckBox):
                 data[key] = field.isChecked()
@@ -102,6 +118,26 @@ class SettingsDialog(QDialog):
             else:
                 data[key] = field.value()
         return Settings.from_dict(data)
+
+    def _update_color_label(self):
+        self.color_label.setText(self.background_color.upper() or "主题色")
+
+    def set_background_color(self, color):
+        if color.isValid():
+            self.background_color = color.name()
+            self._update_color_label()
+
+    def choose_background_color(self):
+        color = QColorDialog.getColor(QColor(self.background_color or "#f5f3eb"), self, "选择浮窗背景色")
+        self.set_background_color(color)
+
+    def reset_background_color(self):
+        self.background_color = ""
+        self._update_color_label()
+
+    def done(self, result):
+        self.picker.cancel()
+        super().done(result)
 
     def accept(self):
         if not valid_hotkey(self.hotkey.text().strip()):

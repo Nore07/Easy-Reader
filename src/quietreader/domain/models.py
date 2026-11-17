@@ -39,6 +39,7 @@ class Settings:
     letter_spacing: float = 0.5
     paragraph_spacing: int = 12
     opacity: float = 0.92
+    background_color: str = ""
     theme: str = "system"
     floating: bool = False
     always_on_top: bool = False
@@ -55,7 +56,7 @@ class Settings:
         for key, low, high, convert in [
             ("font_size", 14, 42, int), ("line_height", 1.2, 2.5, float),
             ("padding", 12, 72, int), ("letter_spacing", 0, 5, float),
-            ("paragraph_spacing", 0, 40, int), ("opacity", 0.55, 1, float),
+            ("paragraph_spacing", 0, 40, int), ("opacity", 0, 1, float),
         ]:
             try:
                 value = float(raw.get(key, getattr(result, key)))
@@ -68,6 +69,9 @@ class Settings:
                 setattr(result, key, raw[key])
         if raw.get("theme") in ("system", "light", "dark", "sepia"):
             result.theme = raw["theme"]
+        color = raw.get("background_color")
+        if isinstance(color, str) and re.fullmatch(r"#[0-9a-fA-F]{6}", color):
+            result.background_color = color.lower()
         if isinstance(raw.get("font_family"), str) and 0 < len(raw["font_family"]) <= 100:
             result.font_family = raw["font_family"]
         if isinstance(raw.get("hotkey"), str) and valid_hotkey(raw["hotkey"]):

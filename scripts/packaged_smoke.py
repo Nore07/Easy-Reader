@@ -1,5 +1,6 @@
 """Launch the built executable, verify import/state, and close its own window."""
 import ctypes
+import argparse
 from ctypes import wintypes
 import json
 from pathlib import Path
@@ -10,6 +11,9 @@ import time
 
 
 def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--transparent", action="store_true", help="Verify startup with a fully transparent floating window")
+    args = parser.parse_args()
     if sys.platform != "win32":
         raise SystemExit("Windows only")
     root = Path(__file__).resolve().parents[1]
@@ -28,7 +32,10 @@ def main():
         book.write_text("第一章\n独立可执行程序读取本地文字。\n" * 20, encoding="utf-8")
         data = directory / "state"
         data.mkdir()
-        (data / "state.json").write_text(json.dumps({"version": 1, "settings": {"close_to_tray": False}, "books": [], "positions": {}}), encoding="utf-8")
+        settings = {"close_to_tray": False}
+        if args.transparent:
+            settings.update(floating=True, opacity=0, background_color="#111111")
+        (data / "state.json").write_text(json.dumps({"version": 1, "settings": settings, "books": [], "positions": {}}), encoding="utf-8")
         started = time.monotonic()
         process = subprocess.Popen([str(executable), "--data-dir", str(data), str(book)], cwd=root)
         windows = []
@@ -77,9 +84,12 @@ def main():
             assert process.wait(timeout=15) == 0
             state = json.loads((data / "state.json").read_text(encoding="utf-8"))
             assert state["last_book"] in state["positions"]
+            if args.transparent:
+                assert state["settings"]["opacity"] == 0
+                assert state["settings"]["background_color"] == "#111111"
             output = root / "artifacts"
             output.mkdir(exist_ok=True)
-            report = {"executable_start": True, "book_import": True, "position_saved": True, "clean_exit": True, "startup_and_import_seconds": startup}
+            report = {"executable_start": True, "book_import": True, "position_saved": True, "clean_exit": True, "transparent_startup": args.transparent, "startup_and_import_seconds": startup}
             (output / "packaged-smoke.json").write_text(json.dumps(report, indent=2), encoding="utf-8")
             print(json.dumps(report))
         finally:
