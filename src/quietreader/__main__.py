@@ -7,6 +7,7 @@ from PySide6.QtWidgets import QApplication, QMessageBox
 
 from quietreader.persistence.store import StateStore
 from quietreader.ui.window import MainWindow
+from quietreader.i18n import tr
 
 
 def main():
@@ -22,12 +23,12 @@ def main():
     try:
         directory.mkdir(parents=True, exist_ok=True)
     except OSError:
-        QMessageBox.critical(None, "无法启动", "无法创建用户数据目录，请检查权限或使用 --data-dir 指定目录。")
+        QMessageBox.critical(None, tr("无法启动"), tr("无法创建用户数据目录，请检查权限或使用 --data-dir 指定目录。"))
         return 1
     lock = QLockFile(str(directory / "quietreader.lock"))
     lock.setStaleLockTime(0)
     if not lock.tryLock(100):
-        QMessageBox.information(None, "QuietReader 已在运行", "同一数据目录的阅读器已在运行，请从托盘显示窗口。")
+        QMessageBox.information(None, tr("QuietReader 已在运行"), tr("同一数据目录的阅读器已在运行，请从托盘显示窗口。"))
         return 0
     window = MainWindow(StateStore(directory))
     app.aboutToQuit.connect(window.shutdown)

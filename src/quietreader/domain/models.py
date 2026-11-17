@@ -1,6 +1,7 @@
 from dataclasses import asdict, dataclass, field
 import math
 import re
+from quietreader.keys import binding_error, normalize_binding
 
 
 @dataclass
@@ -27,7 +28,8 @@ class Position:
 
 
 def valid_hotkey(value: str) -> bool:
-    return bool(re.fullmatch(r"(?:Ctrl\+Alt|Ctrl\+Shift|Alt\+Shift)\+[A-Z0-9]", value))
+    from quietreader.keys import windows_hotkey
+    return windows_hotkey(value) is not None
 
 
 @dataclass
@@ -40,6 +42,8 @@ class Settings:
     paragraph_spacing: int = 12
     opacity: float = 0.92
     background_color: str = ""
+    text_color: str = ""
+    language: str = "system"
     theme: str = "system"
     floating: bool = False
     always_on_top: bool = False
@@ -48,6 +52,7 @@ class Settings:
     hotkey: str = "Ctrl+Alt+R"
     next_key: str = "PgDown"
     previous_key: str = "PgUp"
+    focus_key: str = "F10"
 
     @classmethod
     def from_dict(cls, raw):
@@ -72,15 +77,17 @@ class Settings:
         color = raw.get("background_color")
         if isinstance(color, str) and re.fullmatch(r"#[0-9a-fA-F]{6}", color):
             result.background_color = color.lower()
+        color = raw.get("text_color")
+        if isinstance(color, str) and re.fullmatch(r"#[0-9a-fA-F]{6}", color):
+            result.text_color = color.lower()
+        if raw.get("language") in ("system", "zh_CN", "en"):
+            result.language = raw["language"]
         if isinstance(raw.get("font_family"), str) and 0 < len(raw["font_family"]) <= 100:
             result.font_family = raw["font_family"]
-        if isinstance(raw.get("hotkey"), str) and valid_hotkey(raw["hotkey"]):
-            result.hotkey = raw["hotkey"]
-        keys = ("PgDown", "PgUp", "Right", "Left", "Space")
-        next_key = raw.get("next_key", result.next_key)
-        previous_key = raw.get("previous_key", result.previous_key)
-        if next_key in keys and previous_key in keys and next_key != previous_key:
-            result.next_key, result.previous_key = next_key, previous_key
+        bindings = {key: normalize_binding(raw.get(key, getattr(result, key))) for key in ("next_key", "previous_key", "focus_key", "hotkey")}
+        if not binding_error(bindings):
+            for key, value in bindings.items():
+                setattr(result, key, value)
         return result
 
     def to_dict(self):

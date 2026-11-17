@@ -1,4 +1,4 @@
-from dataclasses import asdict
+from dataclasses import asdict, replace
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -17,6 +17,7 @@ from quietreader.domain.models import Position, Settings, restore_position
 from quietreader.ui.reader import PageView
 from quietreader.ui.settings import SettingsDialog
 from quietreader.ui.theme import colors, stylesheet
+from quietreader.i18n import tr, install_qt_translator
 
 
 def book_icon():
@@ -86,7 +87,11 @@ class MainWindow(QMainWindow):
         self.pending_path = None
         self.quitting = False
         self.closed = False
+        self.focus_mode = False
+        self._chrome_visibility = {}
+        self.status_source = ("离线优先。打开文件即可开始阅读。", {})
         self.sidebar_requested = True
+        self.sidebar_manual = False
         self.tray = None
         self.hotkey = None
         self.worker = None
@@ -109,7 +114,7 @@ class MainWindow(QMainWindow):
         QGuiApplication.instance().screenRemoved.connect(self._screen_removed)
         self._refresh_recent()
         if store.warning:
-            self.status.setText(store.warning)
+            self.set_status(store.warning)
 
     @staticmethod
     def _label(text="", name=""):
@@ -117,10 +122,13 @@ class MainWindow(QMainWindow):
         label.setTextFormat(Qt.TextFormat.PlainText)
         if name:
             label.setObjectName(name)
+        if text:
+            label.setProperty("translation_source", text)
         return label
 
     def _button(self, text, callback, checkable=False):
         button = QPushButton(text)
+        button.setProperty("translation_source", text)
         button.setCheckable(checkable)
         button.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         button.clicked.connect(callback)
@@ -130,13 +138,13 @@ class MainWindow(QMainWindow):
         self.surface = QWidget()
         self.surface.setObjectName("surface")
         self.setCentralWidget(self.surface)
-        root = QVBoxLayout(self.surface)
+        root = self.root_layout = QVBoxLayout(self.surface)
         root.setContentsMargins(14, 12, 14, 6)
         root.setSpacing(9)
         header = DragHeader()
         top = QHBoxLayout(header)
         top.setContentsMargins(2, 0, 0, 6)
-        brand = self._label("静读", "brand")
+        brand = self.brand = self._label("静读", "brand")
         brand.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
         top.addWidget(brand)
         self.eyebrow = self._label("QUIET READER", "eyebrow")
@@ -159,7 +167,9 @@ class MainWindow(QMainWindow):
         self.close_button.setAccessibleName("关闭窗口")
         top.addWidget(self.close_button)
         root.addWidget(header)
-        tools = QHBoxLayout()
+        tools_widget = QWidget()
+        tools = QHBoxLayout(tools_widget)
+        tools.setContentsMargins(0, 0, 0, 0)
         tools.addWidget(self._button("目录 / 最近", self.toggle_sidebar))
         self.float_button = self._button("浮窗", self.toggle_floating, True)
         tools.addWidget(self.float_button)
@@ -169,13 +179,15 @@ class MainWindow(QMainWindow):
         self.encoding_button.setToolTip("TXT 乱码时，手动选择编码重新读取")
         self.encoding_button.hide()
         tools.addWidget(self.encoding_button)
+        self.focus_button = self._button("专注", self.toggle_focus, True)
+        tools.addWidget(self.focus_button)
         tools.addStretch()
-        root.addLayout(tools)
+        root.addWidget(tools_widget)
         self.hotkey_notice = self._label("", "status")
         self.hotkey_notice.setWordWrap(True)
         self.hotkey_notice.hide()
         root.addWidget(self.hotkey_notice)
-        body = QHBoxLayout()
+        body = self.body_layout = QHBoxLayout()
         body.setSpacing(22)
         self.sidebar = QWidget()
         self.sidebar.setObjectName("sidebar")
@@ -183,7 +195,7 @@ class MainWindow(QMainWindow):
         side = QVBoxLayout(self.sidebar)
         side.setContentsMargins(10, 12, 10, 12)
         side.addWidget(self._label("我的阅读", "eyebrow"))
-        tabs = QTabWidget()
+        tabs = self.tabs = QTabWidget()
         self.chapters = QListWidget()
         self.chapters.setAccessibleName("书籍目录")
         self.chapters.itemActivated.connect(self._chapter_activated)
@@ -197,7 +209,7 @@ class MainWindow(QMainWindow):
         side.addWidget(tabs)
         side.addWidget(self._label("本地阅读 · 无需联网", "status"))
         body.addWidget(self.sidebar)
-        reading = QVBoxLayout()
+        reading = self.reading_layout = QVBoxLayout()
         reading.setSpacing(4)
         self.book_title = self._label("一本书，一处安静", "bookTitle")
         self.book_title.setWordWrap(True)
@@ -207,6 +219,8 @@ class MainWindow(QMainWindow):
         reading.addWidget(self.chapter_title)
         self.reader = PageView()
         self.reader.turned.connect(self.turn_page)
+        self.reader.exit_focus.connect(lambda: self.toggle_focus() if self.focus_mode else None)
+        self.reader.focus_requested.connect(self.toggle_focus)
         self.reader.reflowed.connect(self._update_progress)
         reading.addWidget(self.reader, 1)
         self.progress = QSlider(Qt.Orientation.Horizontal)
@@ -215,7 +229,9 @@ class MainWindow(QMainWindow):
         self.progress.sliderReleased.connect(self._seek)
         self.progress.setEnabled(False)
         reading.addWidget(self.progress)
-        navigation = QHBoxLayout()
+        navigation_widget = QWidget()
+        navigation = QHBoxLayout(navigation_widget)
+        navigation.setContentsMargins(0, 0, 0, 0)
         self.previous = self._button("← 上一页", lambda: self.turn_page(-1))
         self.next = self._button("下一页 →", lambda: self.turn_page(1))
         self.page_label = self._label("PageUp / PageDown", "status")
@@ -224,16 +240,18 @@ class MainWindow(QMainWindow):
         navigation.addWidget(self.page_label)
         navigation.addStretch()
         navigation.addWidget(self.next)
-        reading.addLayout(navigation)
+        reading.addWidget(navigation_widget)
         body.addLayout(reading, 1)
         root.addLayout(body, 1)
-        bottom = QHBoxLayout()
+        bottom_widget = QWidget()
+        bottom = QHBoxLayout(bottom_widget)
+        bottom.setContentsMargins(0, 0, 0, 0)
         self.status = self._label("离线优先。打开文件即可开始阅读。", "status")
         self.status.setWordWrap(True)
         bottom.addWidget(self.status, 1)
         self.grip = QSizeGrip(self)
         bottom.addWidget(self.grip, 0, Qt.AlignmentFlag.AlignBottom | Qt.AlignmentFlag.AlignRight)
-        root.addLayout(bottom)
+        root.addWidget(bottom_widget)
         self.encoding_bar = QWidget()
         encoding_layout = QHBoxLayout(self.encoding_bar)
         encoding_layout.setContentsMargins(0, 0, 0, 0)
@@ -246,10 +264,17 @@ class MainWindow(QMainWindow):
         encoding_layout.addStretch()
         self.encoding_bar.hide()
         root.addWidget(self.encoding_bar)
+        self.chrome_widgets = [header, tools_widget, self.hotkey_notice, self.sidebar, self.book_title, self.chapter_title, self.progress, navigation_widget, bottom_widget, self.encoding_bar]
         self.open_shortcut = QShortcut(QKeySequence("Ctrl+O"), self)
         self.open_shortcut.activated.connect(self.choose_file)
         self.settings_shortcut = QShortcut(QKeySequence("Ctrl+,"), self)
         self.settings_shortcut.activated.connect(self.show_settings)
+        self.focus_shortcut = QShortcut(QKeySequence(self.settings.focus_key), self)
+        self.focus_shortcut.activated.connect(self.toggle_focus)
+        self.focus_shortcut.setAutoRepeat(False)
+        self.escape_shortcut = QShortcut(QKeySequence("Esc"), self)
+        self.escape_shortcut.activated.connect(lambda: self.toggle_focus() if self.focus_mode else None)
+        self.escape_shortcut.setEnabled(False)
         self._update_progress()
 
     def _setup_system(self):
@@ -261,10 +286,17 @@ class MainWindow(QMainWindow):
             menu = QMenu(self)
             for label, callback in [("显示 / 隐藏", self.toggle_visible), ("打开本地文件…", self.choose_file), ("阅读偏好…", self.show_settings)]:
                 action = QAction(label, self)
+                action.setProperty("translation_source", label)
                 action.triggered.connect(callback)
                 menu.addAction(action)
             menu.addSeparator()
+            self.tray_focus_action = QAction("进入专注模式", self)
+            self.tray_focus_action.setCheckable(True)
+            self.tray_focus_action.triggered.connect(self.toggle_focus)
+            self.tray_focus_action.setEnabled(False)
+            menu.addAction(self.tray_focus_action)
             action = QAction("退出 QuietReader", self)
+            action.setProperty("translation_source", "退出 QuietReader")
             action.triggered.connect(self.quit_app)
             menu.addAction(action)
             self.tray.setContextMenu(menu)
@@ -275,7 +307,7 @@ class MainWindow(QMainWindow):
         if self.loading:
             return
         self.reveal()
-        file, _ = QFileDialog.getOpenFileName(self, "打开本地书籍", "", "阅读文件 (*.txt *.epub);;TXT (*.txt);;EPUB (*.epub)")
+        file, _ = QFileDialog.getOpenFileName(self, self.t("打开本地书籍"), "", self.t("阅读文件 (*.txt *.epub);;TXT (*.txt);;EPUB (*.epub)"), options=QFileDialog.Option.DontUseNativeDialog)
         if file:
             self.load_path(file)
 
@@ -286,7 +318,7 @@ class MainWindow(QMainWindow):
         self.pending_path = Path(path)
         self.loading = True
         self.open_button.setEnabled(False)
-        self.status.setText("正在后台导入书籍…")
+        self.set_status("正在后台导入书籍…")
         self.worker = ImportTask(path, encoding)
         self.worker.signals.loaded.connect(self._loaded)
         self.worker.signals.failed.connect(self._failed)
@@ -299,6 +331,7 @@ class MainWindow(QMainWindow):
         self.book = book
         self.setWindowTitle(f"{book.title} · QuietReader")
         self.book_title.setText(book.title)
+        self.book_title.setProperty("translation_source", None)
         self.chapters.clear()
         for section in book.sections:
             self.chapters.addItem(section.title)
@@ -309,7 +342,7 @@ class MainWindow(QMainWindow):
         self.store.state["books"] = [record] + [b for b in self.store.state["books"] if b["id"] != book.id][:49]
         self.store.state["last_book"] = book.id
         self._refresh_recent()
-        self.status.setText(f"{book.encoding} · {len(book.sections)} 个章节 / 分段 · 进度自动保存" + (f" · {book.author}" if book.author else ""))
+        self.set_status("{encoding} · {count} 个章节 / 分段 · 进度自动保存{author}", encoding=book.encoding, count=len(book.sections), author=f" · {book.author}" if book.author else "")
         self.encoding_bar.hide()
         self.encoding_button.setVisible(book.encoding != "EPUB")
         self.encoding.setCurrentIndex(max(0, self.encoding.findData(book.encoding)))
@@ -317,7 +350,9 @@ class MainWindow(QMainWindow):
         self.reader.setFocus()
 
     def _failed(self, message, encoding_choice):
-        self.status.setText(message)
+        if self.focus_mode:
+            self.toggle_focus()
+        self.set_status(message)
         self.encoding_bar.setVisible(encoding_choice)
 
     def _finished(self):
@@ -342,6 +377,7 @@ class MainWindow(QMainWindow):
         self.section_index = index
         section = self.book.sections[index]
         self.chapter_title.setText(section.title)
+        self.chapter_title.setProperty("translation_source", None)
         self.chapters.setCurrentRow(index)
         self.reader.set_text(section.text, offset)
         self._update_progress()
@@ -370,13 +406,17 @@ class MainWindow(QMainWindow):
         self.previous.setEnabled(ready and (self.section_index > 0 or self.reader.page > 0))
         self.next.setEnabled(ready and (self.section_index + 1 < len(self.book.sections) or self.reader.page + 1 < self.reader.page_count))
         self.progress.setEnabled(ready)
+        self.focus_button.setEnabled(ready)
+        if hasattr(self, "tray_focus_action"):
+            self.tray_focus_action.setEnabled(ready)
         if ready:
             total = sum(len(s.text) for s in self.book.sections)
             current = sum(len(s.text) for s in self.book.sections[:self.section_index]) + self.reader.offset
             fraction = current / max(1, total)
             if self.section_index == len(self.book.sections) - 1 and self.reader.page == self.reader.page_count - 1:
                 fraction = 1
-            self.page_label.setText(f"{self.reader.page + 1} / {self.reader.page_count} 页 · 全书 {fraction:.0%}")
+            self.page_label.setProperty("translation_source", None)
+            self.page_label.setText(tr("{page} / {pages} 页 · 全书 {progress}", self.settings.language, page=self.reader.page + 1, pages=self.reader.page_count, progress=f"{fraction:.0%}"))
             if not self.progress.isSliderDown():
                 self.progress.setValue(round(fraction * 1000))
 
@@ -409,6 +449,7 @@ class MainWindow(QMainWindow):
             self.recent.addItem(item)
 
     def toggle_sidebar(self):
+        self.sidebar_manual = True
         self.sidebar_requested = not self.sidebar.isVisible()
         self.sidebar.setVisible(not self.sidebar.isVisible())
 
@@ -416,6 +457,7 @@ class MainWindow(QMainWindow):
         self.encoding_bar.setVisible(not self.encoding_bar.isVisible())
 
     def toggle_floating(self, checked):
+        self.sidebar_manual = False
         values = self.settings.to_dict()
         values["floating"] = checked
         self.apply_settings(Settings.from_dict(values))
@@ -425,36 +467,119 @@ class MainWindow(QMainWindow):
         values["always_on_top"] = checked
         self.apply_settings(Settings.from_dict(values))
 
+    def toggle_focus(self, checked=None):
+        if not self.book:
+            return
+        entering = not self.focus_mode
+        if entering:
+            self._pre_focus_geometry = self.geometry()
+            self._pre_focus_maximized = self.isMaximized()
+            self._chrome_visibility = {widget: not widget.isHidden() for widget in self.chrome_widgets}
+        self.focus_mode = entering
+        self.reader.focus_mode = entering
+        self.setMinimumSize(180 if entering else 380, 100 if entering else 360)
+        self.reader.setMinimumSize(80 if entering else 160, 40 if entering else 140)
+        if not entering:
+            for widget, visible in self._chrome_visibility.items():
+                widget.setVisible(visible)
+        self.apply_settings(self.settings)
+        if not entering:
+            self.setGeometry(self._pre_focus_geometry)
+            if self._pre_focus_maximized:
+                self.showMaximized()
+        self.raise_()
+        self.activateWindow()
+        self.reader.setFocus()
+
+    def t(self, source, **values):
+        return tr(source, self.settings.language, **values)
+
+    def set_status(self, source, **values):
+        self.status_source = (source, values)
+        self.status.setProperty("translation_source", None)
+        self.status.setText(self.t(source, **values))
+
+    def _retranslate(self):
+        install_qt_translator(QApplication.instance(), self.settings.language)
+        for widget in self.findChildren(QWidget) + self.findChildren(QAction):
+            source = widget.property("translation_source")
+            if source:
+                widget.setText(self.t(source))
+            if isinstance(widget, QWidget):
+                for getter, setter, key in [("toolTip", "setToolTip", "translation_tip"), ("accessibleName", "setAccessibleName", "translation_accessible")]:
+                    original = widget.property(key)
+                    if original is None:
+                        original = getattr(widget, getter)()
+                        widget.setProperty(key, original)
+                    if original:
+                        getattr(widget, setter)(self.t(original))
+        self.tabs.setTabText(0, self.t("目录"))
+        self.tabs.setTabText(1, self.t("最近"))
+        self.encoding.setItemText(0, self.t("自动识别"))
+        self.focus_button.setText(self.t("退出专注" if self.focus_mode else "专注"))
+        if hasattr(self, "tray_focus_action"):
+            self.tray_focus_action.setText(self.t("退出专注模式" if self.focus_mode else "进入专注模式"))
+            self.tray_focus_action.setChecked(self.focus_mode)
+        if self.tray:
+            self.tray.setToolTip("QuietReader")
+        if not self.book:
+            self.setWindowTitle("QuietReader")
+        self.set_status(self.status_source[0], **self.status_source[1])
+
+    def _apply_window_style(self):
+        floating = self.settings.floating or self.focus_mode
+        alpha = 0 if self.focus_mode else round(self.settings.opacity * 255) if floating else 255
+        self.setStyleSheet(stylesheet(colors(self.settings.theme, self.settings.background_color if floating else ""), alpha))
+
     def apply_settings(self, settings):
         self.settings = Settings.from_dict(settings.to_dict())
         settings = self.settings
+        floating = settings.floating or self.focus_mode
         was_visible = self.isVisible()
         bounds = self.geometry()
-        flags = Qt.WindowType.Tool | Qt.WindowType.FramelessWindowHint if settings.floating else Qt.WindowType.Window
-        if settings.floating:
+        flags = Qt.WindowType.Tool | Qt.WindowType.FramelessWindowHint if floating else Qt.WindowType.Window
+        if floating:
             flags |= Qt.WindowType.NoDropShadowWindowHint
         if settings.always_on_top:
             flags |= Qt.WindowType.WindowStaysOnTopHint
-        if self.windowFlags() != flags:
+        mask = Qt.WindowType.WindowType_Mask | Qt.WindowType.FramelessWindowHint | Qt.WindowType.WindowStaysOnTopHint | Qt.WindowType.NoDropShadowWindowHint
+        if self.windowFlags() & mask != flags & mask:
             self.setWindowFlags(flags)
-        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, settings.floating)
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, floating)
         self.setGeometry(bounds)
-        self.setStyleSheet(stylesheet(colors(settings.theme, settings.background_color if settings.floating else ""), round(settings.opacity * 255) if settings.floating else 255))
+        self._apply_window_style()
         self.float_button.setChecked(settings.floating)
         self.pin_button.setChecked(settings.always_on_top)
         self.close_button.setVisible(settings.floating)
         self.drag_handle.setVisible(settings.floating)
-        self.reader.apply_settings(settings)
-        self.sidebar.setVisible(self.sidebar_requested and not settings.floating and self.width() >= 700)
+        self.reader.apply_settings(replace(settings, floating=floating))
+        self.sidebar.setVisible(self.sidebar_requested and not self.focus_mode and (self.sidebar_manual or not floating and self.width() >= 700))
+        self.brand.setVisible(self.width() >= 700 and not self.focus_mode)
+        self.eyebrow.setVisible(self.width() >= 700 and not self.focus_mode)
+        self.focus_button.setChecked(self.focus_mode)
+        self.focus_shortcut.setKey(QKeySequence(settings.focus_key))
+        self.escape_shortcut.setEnabled(self.focus_mode)
+        self.root_layout.setContentsMargins(*((0, 0, 0, 0) if self.focus_mode else (14, 12, 14, 6)))
+        self.root_layout.setSpacing(0 if self.focus_mode else 9)
+        self.body_layout.setSpacing(0 if self.focus_mode else 22)
+        self.reading_layout.setSpacing(0 if self.focus_mode else 4)
+        self._retranslate()
         if was_visible:
             self.show()
+            self.activateWindow()
+            self.reader.setFocus()
         if self.hotkey:
             warning = self.hotkey.configure(settings.global_hotkey, settings.hotkey)
-            self.hotkey_notice.setText(warning)
+            self.hotkey_notice.setText(self.t(warning))
             self.hotkey_notice.setVisible(bool(warning))
+        if self.focus_mode:
+            for widget in self.chrome_widgets:
+                widget.hide()
         self.schedule_save()
 
     def show_settings(self):
+        if self.focus_mode:
+            self.toggle_focus()
         self.reveal()
         dialog = SettingsDialog(self.settings, self)
         if dialog.exec() == QDialog.DialogCode.Accepted:
@@ -462,7 +587,7 @@ class MainWindow(QMainWindow):
 
     def _system_theme_changed(self, *args):
         if self.settings.theme == "system":
-            self.setStyleSheet(stylesheet(colors("system", self.settings.background_color if self.settings.floating else ""), round(self.settings.opacity * 255) if self.settings.floating else 255))
+            self._apply_window_style()
             self.reader.update()
 
     def _screen_removed(self, *args):
@@ -497,22 +622,24 @@ class MainWindow(QMainWindow):
             return
         self.store.state["settings"] = self.settings.to_dict()
         if not self.isMinimized() and not self.isMaximized():
-            self.store.state["window"] = list(self.geometry().getRect())
+            bounds = self._pre_focus_geometry if self.focus_mode else self.geometry()
+            self.store.state["window"] = list(bounds.getRect())
         if self.book:
             section = self.book.sections[self.section_index]
             self.store.state["positions"][self.book.id] = asdict(Position(section.id, self.reader.offset))
         try:
             self.store.save()
         except OSError:
-            self.status.setText("保存失败，请检查用户数据目录的权限和可用空间。")
+            self.set_status("保存失败，请检查用户数据目录的权限和可用空间。")
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
         if hasattr(self, "save_timer"):
             self.schedule_save()
         if hasattr(self, "sidebar"):
-            self.sidebar.setVisible(self.sidebar_requested and not self.settings.floating and self.width() >= 700)
-            self.eyebrow.setVisible(self.width() >= 700)
+            self.sidebar.setVisible(self.sidebar_requested and not self.focus_mode and (self.sidebar_manual or not self.settings.floating and self.width() >= 700))
+            self.eyebrow.setVisible(self.width() >= 700 and not self.focus_mode)
+            self.brand.setVisible(self.width() >= 700 and not self.focus_mode)
 
     def moveEvent(self, event):
         super().moveEvent(event)
@@ -520,7 +647,7 @@ class MainWindow(QMainWindow):
             self.schedule_save()
 
     def mousePressEvent(self, event):
-        if self.settings.floating and event.button() == Qt.MouseButton.LeftButton:
+        if (self.settings.floating or self.focus_mode) and event.button() == Qt.MouseButton.LeftButton:
             x, y = event.position().x(), event.position().y()
             edges = Qt.Edge(0)
             if x < 8:

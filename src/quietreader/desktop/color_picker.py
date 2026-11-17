@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from PySide6.QtCore import QObject, QPoint, QRect, Qt, QTimer, Signal
 from PySide6.QtGui import QColor, QCursor, QGuiApplication, QImage, QPainter, QPen
 from PySide6.QtWidgets import QWidget
+from quietreader.i18n import tr, resolve_language
 
 
 @dataclass
@@ -40,24 +41,26 @@ class ColorOverlay(QWidget):
     def __init__(self, sample, parent):
         super().__init__(parent, Qt.WindowType.Tool | Qt.WindowType.FramelessWindowHint | Qt.WindowType.WindowStaysOnTopHint)
         self.sample = sample
+        self.language = parent.language.currentData() if hasattr(parent, "language") else "system"
         self.point = QPoint(20, 20)
         self.setGeometry(sample.geometry)
         self.setCursor(Qt.CursorShape.CrossCursor)
         self.setMouseTracking(True)
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
-        self.setAccessibleName("桌面取色：单击选择，Esc 或右键取消")
+        self.setAccessibleName(tr("桌面取色：单击选择，Esc 或右键取消", self.language))
 
     def paintEvent(self, event):
         painter = QPainter(self)
         painter.drawImage(self.rect(), self.sample.image)
         color = self.sample.color_at(self.sample.geometry.topLeft() + self.point)
-        box = QRect(min(self.width() - 260, max(0, self.point.x() + 20)), min(self.height() - 74, max(0, self.point.y() + 20)), 260, 74)
+        width = min(self.width(), 350 if resolve_language(self.language) == "en" else 260)
+        box = QRect(min(self.width() - width, max(0, self.point.x() + 20)), min(self.height() - 74, max(0, self.point.y() + 20)), width, 74)
         painter.fillRect(box, QColor("#f5f3eb"))
         painter.setPen(QPen(QColor("#315743"), 1))
         painter.drawRect(box)
-        painter.fillRect(box.adjusted(10, 12, -220, -32), color)
+        painter.fillRect(QRect(box.left() + 10, box.top() + 12, 26, 30), color)
         painter.drawText(box.adjusted(46, 9, -8, -30), Qt.AlignmentFlag.AlignVCenter, color.name().upper())
-        painter.drawText(box.adjusted(10, 38, -8, -4), Qt.AlignmentFlag.AlignVCenter, "单击取色 · Esc / 右键取消")
+        painter.drawText(box.adjusted(10, 38, -8, -4), Qt.AlignmentFlag.AlignVCenter, tr("单击取色 · Esc / 右键取消", self.language))
 
     def mouseMoveEvent(self, event):
         self.point = event.position().toPoint()

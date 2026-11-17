@@ -1,12 +1,16 @@
 """Copy installed dependency notices without guessing license texts."""
 from importlib.metadata import distribution
+import argparse
 from pathlib import Path
 import shutil
 
 
 def main():
     root = Path(__file__).resolve().parents[1]
-    destination = root / "dist" / "QuietReader" / "third-party"
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--app-dir", type=Path, default=root / "dist" / "QuietReader")
+    args = parser.parse_args()
+    destination = args.app_dir / "third-party"
     destination.mkdir(parents=True, exist_ok=True)
     lines = ["# Installed dependency metadata", "", "See docs/third-party.md in the source repository for distribution notes.", ""]
     for name in ["PySide6_Essentials", "shiboken6", "charset-normalizer", "defusedxml"]:
@@ -21,6 +25,9 @@ def main():
                     shutil.copyfile(source, target)
     (destination / "DEPENDENCIES.md").write_text("\n".join(lines), encoding="utf-8")
     shutil.copyfile(root / "docs" / "third-party.md", destination / "distribution-notes.md")
+    artifacts = root / "artifacts"
+    artifacts.mkdir(exist_ok=True)
+    (artifacts / "latest-build.txt").write_text(str((args.app_dir / "QuietReader.exe").resolve()), encoding="utf-8")
 
 
 if __name__ == "__main__":

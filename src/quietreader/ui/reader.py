@@ -9,6 +9,7 @@ from PySide6.QtWidgets import QMenu, QWidget
 
 from quietreader.domain.models import Settings
 from quietreader.ui.theme import colors
+from quietreader.i18n import tr
 
 
 def qt_offset(text: str, python_offset: int) -> int:
@@ -22,10 +23,13 @@ def python_offset(text: str, utf16_offset: int) -> int:
 class PageView(QWidget):
     turned = Signal(int)
     reflowed = Signal()
+    exit_focus = Signal()
+    focus_requested = Signal()
 
     def __init__(self, parent=None):
         super().__init__(parent)
         self.settings = Settings()
+        self.focus_mode = False
         self.text = ""
         self.offset = 0
         self.page = 0
@@ -99,18 +103,22 @@ class PageView(QWidget):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.TextAntialiasing)
         c = colors(self.settings.theme, self.settings.background_color if self.settings.floating else "")
+        if self.settings.text_color:
+            c["ink"] = self.settings.text_color
         painter.setPen(QColor(c["ink"]))
         if not self.text:
+            if self.focus_mode:
+                return
             box = QRectF(self.rect()).adjusted(25, 10, -25, -10)
             painter.setFont(QFont("Microsoft YaHei", 11))
             painter.setPen(QColor(c["muted"]))
-            painter.drawText(box.adjusted(0, 0, 0, -130), Qt.AlignmentFlag.AlignCenter, "一 段 留 给 自 己 的 时 间")
+            painter.drawText(box.adjusted(0, 0, 0, -130), Qt.AlignmentFlag.AlignCenter, tr("一 段 留 给 自 己 的 时 间", self.settings.language))
             painter.setFont(QFont("Microsoft YaHei", 23))
             painter.setPen(QColor(c["ink"]))
-            painter.drawText(box, Qt.AlignmentFlag.AlignCenter | Qt.TextFlag.TextWordWrap, "把喧闹\n留在书页之外。")
+            painter.drawText(box, Qt.AlignmentFlag.AlignCenter | Qt.TextFlag.TextWordWrap, tr("把喧闹\n留在书页之外。", self.settings.language))
             painter.setFont(QFont("Microsoft YaHei", 10))
             painter.setPen(QColor(c["muted"]))
-            painter.drawText(box.adjusted(0, 160, 0, 0), Qt.AlignmentFlag.AlignCenter, "打开一本 TXT 或 EPUB\n文件与进度，只保存在这台电脑。")
+            painter.drawText(box.adjusted(0, 160, 0, 0), Qt.AlignmentFlag.AlignCenter, tr("打开一本 TXT 或 EPUB\n文件与进度，只保存在这台电脑。", self.settings.language))
             return
         pad = self.settings.padding
         painter.setClipRect(QRectF(pad, pad, max(1, self.width() - 2 * pad), self.page_height))
@@ -143,19 +151,27 @@ class PageView(QWidget):
 
     def contextMenuEvent(self, event):
         menu = QMenu(self)
-        action = menu.addAction("复制选中文字", self.copy)
+        action = menu.addAction(tr("复制选中文字", self.settings.language), self.copy)
         action.setEnabled(self.selection.hasSelection())
+        if self.focus_mode:
+            menu.addAction(tr("退出专注模式", self.settings.language), self.exit_focus.emit)
         menu.exec(event.globalPos())
 
     def copy(self):
         QGuiApplication.clipboard().setText(self.selection.selectedText().replace("\u2029", "\n"))
 
     def keyPressEvent(self, event):
-        if event.matches(QKeySequence.StandardKey.Copy):
+        sequence = QKeySequence(event.keyCombination()).toString(QKeySequence.SequenceFormat.PortableText)
+        if event.key() == Qt.Key.Key_Escape and self.focus_mode:
+            self.exit_focus.emit()
+        elif sequence == self.settings.focus_key:
+            if not event.isAutoRepeat():
+                self.focus_requested.emit()
+        elif event.matches(QKeySequence.StandardKey.Copy):
             self.copy()
-        elif QKeySequence(event.key()).toString() == self.settings.next_key:
+        elif sequence == self.settings.next_key:
             self.turned.emit(1)
-        elif QKeySequence(event.key()).toString() == self.settings.previous_key:
+        elif sequence == self.settings.previous_key:
             self.turned.emit(-1)
         else:
             super().keyPressEvent(event)

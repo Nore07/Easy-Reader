@@ -5,6 +5,7 @@ import sys
 from PySide6.QtCore import QAbstractNativeEventFilter
 
 from quietreader.domain.models import valid_hotkey
+from quietreader.keys import windows_hotkey
 
 
 class GlobalHotkey(QAbstractNativeEventFilter):
@@ -25,12 +26,8 @@ class GlobalHotkey(QAbstractNativeEventFilter):
             return "当前平台不支持 Windows 全局快捷键。"
         if not valid_hotkey(key):
             return "全局快捷键格式无效。"
-        modifiers = {"Ctrl": 0x0002, "Alt": 0x0001, "Shift": 0x0004}
-        parts = key.split("+")
-        flags = 0x4000  # MOD_NOREPEAT
-        for part in parts[:-1]:
-            flags |= modifiers[part]
-        self.registered = bool(ctypes.windll.user32.RegisterHotKey(None, self.ID, flags, ord(parts[-1])))
+        flags, virtual_key = windows_hotkey(key)
+        self.registered = bool(ctypes.windll.user32.RegisterHotKey(None, self.ID, flags | 0x4000, virtual_key))
         return "" if self.registered else "全局快捷键注册失败，可能已被占用。请在设置中修改；正文翻页仍可使用。"
 
     def unregister(self):
