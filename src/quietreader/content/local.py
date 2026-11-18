@@ -11,7 +11,7 @@ import zipfile
 from charset_normalizer import from_bytes
 from defusedxml import ElementTree as ET
 
-from quietreader.domain.models import Book, EPUBLink, NavigationEntry, Section
+from quietreader.domain.models import Book, EPUBFormatRange, EPUBLink, NavigationEntry, Section
 
 MAX_FILE = 32 * 1024 * 1024
 MAX_EXPANDED = 64 * 1024 * 1024
@@ -19,6 +19,7 @@ CHUNK_SIZE = 24000
 MAX_EPUB_ANCHORS = 100000
 MAX_EPUB_LINKS = 50000
 MAX_EPUB_NAV_ENTRIES = 20000
+MAX_EPUB_FORMAT_RANGES = 50000
 ENCODINGS = ("auto", "utf-8", "utf-8-sig", "utf-16", "utf-16-le", "utf-16-be", "gb18030", "gbk")
 
 
@@ -107,6 +108,17 @@ def parse_txt(text: str) -> list[Section]:
 
 class TextExtractor(HTMLParser):
     """Retain text only; no widget ever receives book HTML."""
+    FORMAT_TAGS = {
+        "h1": ("heading", "1"), "h2": ("heading", "2"), "h3": ("heading", "3"),
+        "h4": ("heading", "4"), "h5": ("heading", "5"), "h6": ("heading", "6"),
+        "strong": ("bold", ""), "b": ("bold", ""), "em": ("italic", ""), "i": ("italic", ""),
+        "cite": ("italic", ""), "dfn": ("italic", ""), "del": ("strike", ""),
+        "s": ("strike", ""), "strike": ("strike", ""), "code": ("code", ""),
+        "tt": ("code", ""), "kbd": ("code", ""), "samp": ("code", ""),
+        "sup": ("superscript", ""), "sub": ("subscript", ""), "u": ("underline", ""),
+        "ins": ("underline", ""), "mark": ("highlight", ""), "blockquote": ("quote", ""),
+    }
+
     def __init__(self):
         super().__init__(convert_charrefs=True)
         self.parts = []
@@ -114,15 +126,39 @@ class TextExtractor(HTMLParser):
         self.blocked = 0
         self.heading_depth = 0
         self.heading = []
+        self._heading_found = False
+        self._capture_heading = False
         self.anchors = {}
         self.links = []
+        self.formats = []
         self.pagebreaks = []
         self._open_links = []
+        self._open_formats = []
+        self._lists = []
 
     def _append(self, value):
         if value:
             self.parts.append(value)
             self.length += len(value)
+
+    def _begin_format(self, tag, kind, value=""):
+        if len(self.formats) + len(self._open_formats) >= MAX_EPUB_FORMAT_RANGES:
+            raise ImportError("EPUB 文本格式标记数量超过当前支持范围。")
+        self._open_formats.append((tag, self.length, kind, value))
+
+    def _end_format(self, tag):
+        for index in range(len(self._open_formats) - 1, -1, -1):
+            open_tag, start, kind, value = self._open_formats[index]
+            if open_tag == tag:
+                del self._open_formats[index]
+                if self.length > start:
+                    self.formats.append(EPUBFormatRange(start, self.length, kind, value))
+                break
+
+    def _close_open_formats(self):
+        while self._open_formats:
+            tag, _start, _kind, _value = self._open_formats[-1]
+            self._end_format(tag)
 
     def handle_starttag(self, tag, attrs):
         if tag in ("script", "style", "head", "svg", "math", "iframe", "object"):
@@ -142,10 +178,41 @@ class TextExtractor(HTMLParser):
             if len(self.links) + len(self._open_links) >= MAX_EPUB_LINKS:
                 raise ImportError("EPUB 内部链接数量超过当前支持范围。")
             self._open_links.append((self.length, values["href"]))
-        if tag in ("h1", "h2", "h3"):
+        if tag in ("h1", "h2", "h3", "h4", "h5", "h6"):
             self.heading_depth += 1
-        if tag in ("p", "div", "br", "li", "h1", "h2", "h3", "section", "tr"):
+            if self.heading_depth == 1 and not self._heading_found:
+                self._heading_found = True
+                self._capture_heading = True
+        if tag in ("ol", "ul"):
+            try:
+                start = max(1, min(1000000, int(values.get("start", "1"))))
+            except (TypeError, ValueError):
+                start = 1
+            self._lists.append({"tag": tag, "next": start})
+        is_list_item = tag == "li"
+        if is_list_item:
+            depth = min(32, max(0, len(self._lists) - 1))
+            marker = "•"
+            if self._lists and self._lists[-1]["tag"] == "ol":
+                try:
+                    number = max(1, min(1000000, int(values.get("value", self._lists[-1]["next"]))))
+                except (TypeError, ValueError):
+                    number = self._lists[-1]["next"]
+                marker = f"{number}."
+                self._lists[-1]["next"] = min(1000001, number + 1)
+            self._append("\n" + "  " * depth + marker + " ")
+            self._begin_format(tag, "list_item", str(depth))
+        elif tag in ("p", "div", "br", "h1", "h2", "h3", "h4", "h5", "h6", "section", "tr", "blockquote"):
             self._append("\n")
+        if tag == "hr":
+            self._append("\n")
+            self._begin_format(tag, "rule")
+            self._append("────────────────")
+            self._end_format(tag)
+            self._append("\n")
+        elif tag in self.FORMAT_TAGS:
+            kind, value = self.FORMAT_TAGS[tag]
+            self._begin_format(tag, kind, value)
 
     def handle_endtag(self, tag):
         if tag in ("script", "style", "head", "svg", "math", "iframe", "object"):
@@ -153,18 +220,27 @@ class TextExtractor(HTMLParser):
             return
         if self.blocked:
             return
+        if tag in self.FORMAT_TAGS or tag == "li":
+            self._end_format(tag)
         if tag in ("a", "area") and self._open_links:
             start, href = self._open_links.pop()
             self.links.append((start, self.length, href))
-        if tag in ("h1", "h2", "h3"):
+        if tag in ("h1", "h2", "h3", "h4", "h5", "h6"):
             self.heading_depth = max(0, self.heading_depth - 1)
-        if tag in ("p", "div", "li", "h1", "h2", "h3", "section", "tr"):
+            if self.heading_depth == 0:
+                self._capture_heading = False
+        if tag in ("p", "div", "li", "h1", "h2", "h3", "h4", "h5", "h6", "section", "tr", "blockquote"):
             self._append("\n")
+        if tag in ("ol", "ul"):
+            for index in range(len(self._lists) - 1, -1, -1):
+                if self._lists[index]["tag"] == tag:
+                    del self._lists[index:]
+                    break
 
     def handle_data(self, data):
         if not self.blocked:
             self._append(data)
-            if self.heading_depth:
+            if self._capture_heading:
                 self.heading.append(data)
 
     def close(self):
@@ -172,6 +248,7 @@ class TextExtractor(HTMLParser):
         while self._open_links:
             start, href = self._open_links.pop()
             self.links.append((start, self.length, href))
+        self._close_open_formats()
 
 
 def _normalize_with_positions(text, positions):
@@ -478,6 +555,8 @@ def _load_epub(path: Path) -> tuple[str, str, list[Section]]:
                 source_offsets = list(parser.anchors.values())
                 for start, end, _ in parser.links:
                     source_offsets.extend((start, end))
+                for item in parser.formats:
+                    source_offsets.extend((item.start, item.end))
                 source_offsets.extend(page["offset"] for page in parser.pagebreaks)
                 text, normalized = _normalize_with_positions(raw_text, source_offsets)
                 if text:
@@ -493,6 +572,10 @@ def _load_epub(path: Path) -> tuple[str, str, list[Section]]:
                         target = _navigation_target(item_path, href)
                         if target and normalized[end] > normalized[start]:
                             links.append(EPUBLink(normalized[start], normalized[end], *target))
+                    formats = [
+                        EPUBFormatRange(normalized[item.start], normalized[item.end], item.kind, item.value)
+                        for item in parser.formats if normalized[item.end] > normalized[item.start]
+                    ]
                     for number, page in enumerate(parser.pagebreaks, 1):
                         content_pages.append(NavigationEntry(
                             page["label"] or f"{number}", item_path, page["fragment"], source_offset=normalized[page["offset"]]
@@ -510,6 +593,10 @@ def _load_epub(path: Path) -> tuple[str, str, list[Section]]:
                         chunk.links = [
                             EPUBLink(max(start, link.start) - start, min(end, link.end) - start, link.path, link.fragment)
                             for link in links if link.start < end and link.end > start
+                        ]
+                        chunk.formats = [
+                            EPUBFormatRange(max(start, item.start) - start, min(end, item.end) - start, item.kind, item.value)
+                            for item in formats if item.start < end and item.end > start
                         ]
                         start = end
                     sections.extend(chunks)

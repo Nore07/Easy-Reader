@@ -95,3 +95,11 @@ GUI 测试仅使用脚本原创的临时文本及构造的 EPUB，不读取用�
 71 项 pytest 通过，覆盖两种 EPUB 封面元数据、缺失/损坏封面、旧状态读取、非法记录过滤、笔记限长、UI 双语显示、书签新增/删除和重启定位。`scripts/epub_library_smoke.py` 在真实 Windows Qt 窗口验证封面和书签流程；新打包 EXE 通过 `scripts/packaged_smoke.py --library` 导入元数据及独立封面的临时 EPUB、保存位置并正常退出。包位于 `dist/epub-library-release/QuietReader/QuietReader.exe`。
 
 封面只显示 EPUB 声明的本地图片资源，不保存到用户状态文件；元数据简介从 XML 中提取为纯文本，不执行书中标记或样式。回归样本为本地构造的 EPUB，尚未覆盖不同出版软件生成的真实书籍集合。
+
+## 2026-11-18：EPUB 基础语义排版
+
+在纯文本抽取中为标题层级、粗体、斜体、删除线、下划线、高亮、引用、编号/项目符号列表、行内代码、上标/下标和水平分隔线保留受限格式范围，每个正文文档最多 50,000 个标记。格式范围在空白归一化与长章节分块时同步换算；阅读器只向 Qt 文档插入已提取的文本、格式枚举和本地插图，不把原始 XHTML/CSS/脚本交给渲染层。版面使用用户的字体设置，标题字号按层级实时缩放，链接颜色和可点击行为保持优先级。
+
+75 项 pytest 通过，覆盖上述格式、标题内嵌强调、实体/活动内容过滤、长章节跨分块格式范围、Qt 字符与段落格式、普通 TXT 默认样式及已有功能。`scripts/epub_formatting_smoke.py` 在真实 Windows 窗口检查排版并生成分页截图；`scripts/navigation_smoke.py`、`scripts/illustrations_smoke.py` 和 `scripts/epub_library_smoke.py` 同轮通过。最终独立包 `dist/epub-complete-release/QuietReader/QuietReader.exe` 的 `--formatted`、`--navigation`、`--library` 和 `--illustrated` 冒烟均通过，支持启动、导入、保存位置与干净退出。
+
+这是面向重排版阅读的基础语义子集，不应用原书 CSS 样式表，也不等同浏览器排版。固定版式、竖排、任意 CSS、复杂 MathML、嵌入脚本、媒体覆盖和在线资源仍不支持。验证使用自制 EPUB 样本；真实出版物兼容性仍需后续用用户挑选的书籍样本复核。

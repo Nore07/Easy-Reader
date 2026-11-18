@@ -22,10 +22,11 @@ def main():
     parser.add_argument("--illustrated", action="store_true", help="Import an EPUB with PNG and SVG illustrations")
     parser.add_argument("--navigation", action="store_true", help="Import an EPUB with nested TOC, page-list and internal links")
     parser.add_argument("--library", action="store_true", help="Import an EPUB with metadata and a separate cover image")
+    parser.add_argument("--formatted", action="store_true", help="Import an EPUB with semantic text formatting")
     args = parser.parse_args()
     if args.emergency and (args.focus or args.transparent):
         parser.error("Run the emergency scenario separately")
-    scenarios = [args.navigation, args.library, args.illustrated, args.focus, args.transparent, args.emergency]
+    scenarios = [args.navigation, args.library, args.formatted, args.illustrated, args.focus, args.transparent, args.emergency]
     if sum(scenarios) > 1:
         parser.error("Run one packaged smoke scenario at a time")
     if sys.platform != "win32":
@@ -74,6 +75,12 @@ def main():
             book = directory / "山间来信.epub"
             book.write_bytes(_metadata_epub("epub3", _png()))
             expected_title = "山间来信"
+        if args.formatted:
+            sys.path[:0] = [str(root / "src"), str(root / "tests")]
+            from test_epub_formatting import _semantic_epub
+            book = directory / "排版测试.epub"
+            _semantic_epub(book)
+            expected_title = "排版测试"
         data = directory / "state"
         data.mkdir()
         settings = {"close_to_tray": False}
@@ -204,7 +211,7 @@ def main():
                 assert state["settings"]["previous_chapter_key"] == "Alt+K"
             output = root / "artifacts"
             output.mkdir(exist_ok=True)
-            report = {"executable_start": True, "book_import": True, "position_saved": True, "clean_exit": True, "illustrated_epub": args.illustrated, "epub_navigation": args.navigation, "epub_library": args.library, "transparent_startup": args.transparent, "focus_keyboard_and_english": args.focus, "global_visibility_emergency_restart": args.emergency, "emergency_exit_seconds": emergency_seconds, "startup_and_import_seconds": startup}
+            report = {"executable_start": True, "book_import": True, "position_saved": True, "clean_exit": True, "illustrated_epub": args.illustrated, "epub_navigation": args.navigation, "epub_library": args.library, "epub_semantic_formatting": args.formatted, "transparent_startup": args.transparent, "focus_keyboard_and_english": args.focus, "global_visibility_emergency_restart": args.emergency, "emergency_exit_seconds": emergency_seconds, "startup_and_import_seconds": startup}
             (output / "packaged-smoke.json").write_text(json.dumps(report, indent=2), encoding="utf-8")
             print(json.dumps(report))
         finally:

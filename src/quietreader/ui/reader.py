@@ -39,6 +39,7 @@ class PageView(QWidget):
         self.images = {}
         self.image_sizes = {}
         self.links = []
+        self.formats = []
         self.offset = 0
         self.page = 0
         self.page_count = 1
@@ -51,7 +52,7 @@ class PageView(QWidget):
         self.setMinimumSize(160, 140)
         self.setMouseTracking(True)
 
-    def set_text(self, text: str, offset=0, images=None, links=None):
+    def set_text(self, text: str, offset=0, images=None, links=None, formats=None):
         self.text = text
         self.offset = max(0, min(len(text), offset))
         previous = self.document
@@ -61,6 +62,7 @@ class PageView(QWidget):
         self.images = {}
         self.image_sizes = {}
         self.links = list(links or [])
+        self.formats = list(formats or [])
         for position, payload in (images or {}).items():
             data = QBuffer(self)
             data.setData(QByteArray(payload))
@@ -122,6 +124,55 @@ class PageView(QWidget):
         c = colors(self.settings.theme, self.settings.background_color if self.settings.floating else "")
         if self.settings.text_color:
             c["ink"] = self.settings.text_color
+        heading_scale = {"1": 1.8, "2": 1.55, "3": 1.35, "4": 1.2, "5": 1.1, "6": 1.0}
+        # Apply heading sizing first so nested inline emphasis can refine it.
+        for item in sorted(self.formats, key=lambda value: value.kind != "heading"):
+            if item.end <= item.start:
+                continue
+            cursor = QTextCursor(self.document)
+            cursor.setPosition(qt_offset(self.text, item.start))
+            cursor.setPosition(qt_offset(self.text, item.end), QTextCursor.MoveMode.KeepAnchor)
+            char_format = QTextCharFormat()
+            kind = item.kind
+            if kind == "bold":
+                char_format.setFontWeight(QFont.Weight.Bold)
+            elif kind == "italic":
+                char_format.setFontItalic(True)
+            elif kind == "strike":
+                char_format.setFontStrikeOut(True)
+            elif kind == "underline":
+                char_format.setFontUnderline(True)
+            elif kind == "highlight":
+                char_format.setBackground(QColor(c["selected"]))
+            elif kind == "code":
+                code_font = cursor.charFormat().font()
+                code_font.setFamily("Consolas")
+                code_font.setStyleHint(QFont.StyleHint.Monospace)
+                char_format.setFont(code_font)
+            elif kind in ("superscript", "subscript"):
+                vertical = QTextCharFormat.VerticalAlignment.AlignSuperScript if kind == "superscript" else QTextCharFormat.VerticalAlignment.AlignSubScript
+                char_format.setVerticalAlignment(vertical)
+            elif kind == "heading":
+                heading_font = QFont(self.settings.font_family)
+                heading_font.setPixelSize(max(1, round(self.settings.font_size * heading_scale.get(item.value, 1.0))))
+                heading_font.setWeight(QFont.Weight.Bold)
+                char_format.setFont(heading_font)
+            elif kind == "quote":
+                char_format.setFontItalic(True)
+                block_format = QTextBlockFormat()
+                block_format.setLeftMargin(max(14, self.settings.font_size * 1.2))
+                cursor.mergeBlockFormat(block_format)
+            elif kind == "list_item":
+                block_format = QTextBlockFormat()
+                block_format.setLeftMargin(int(item.value or 0) * self.settings.font_size * 0.8)
+                cursor.mergeBlockFormat(block_format)
+            elif kind == "rule":
+                char_format.setForeground(QColor(c["muted"]))
+                block_format = QTextBlockFormat()
+                block_format.setAlignment(Qt.AlignmentFlag.AlignHCenter)
+                cursor.mergeBlockFormat(block_format)
+            if kind in ("bold", "italic", "strike", "underline", "highlight", "code", "superscript", "subscript", "heading", "quote", "rule"):
+                cursor.mergeCharFormat(char_format)
         for link in self.links:
             if link.end <= link.start:
                 continue

@@ -504,7 +504,7 @@ class MainWindow(QMainWindow):
         self.chapter_title.setText(section.title)
         self.chapter_title.setProperty("translation_source", None)
         self._select_toc_target(index, offset)
-        self.reader.set_text(section.text, offset, section.images, section.links)
+        self.reader.set_text(section.text, offset, section.images, section.links, section.formats)
         self._update_progress()
         self.schedule_save()
 

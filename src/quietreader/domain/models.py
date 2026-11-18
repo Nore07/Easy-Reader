@@ -13,6 +13,14 @@ class EPUBLink:
 
 
 @dataclass
+class EPUBFormatRange:
+    start: int
+    end: int
+    kind: str
+    value: str = ""
+
+
+@dataclass
 class NavigationEntry:
     label: str
     path: str
@@ -31,6 +39,7 @@ class Section:
     source_path: str = ""
     anchors: dict[str, int] = field(default_factory=dict)
     links: list[EPUBLink] = field(default_factory=list)
+    formats: list[EPUBFormatRange] = field(default_factory=list)
 
 
 @dataclass
