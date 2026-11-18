@@ -21,6 +21,8 @@ Windows 本地 TXT / EPUB 阅读器。使用 **Python + PySide6（Qt Widgets）*
 
 - **打开**或 `Ctrl+O`：选择 TXT / EPUB。最近阅读和目录在左侧，可单击或键盘选择后回车跳转。
 - 正文获得焦点时，`PageDown` / `PageUp` 翻页，`Ctrl+PageDown` / `Ctrl+PageUp` 跨章节跳转（偏好中可改）；页尾自动继续下一章节。目录与印刷页码列表可跳到 EPUB 章节或锚点，正文脚注等书内链接可点击。底部滑块跳转全书进度。可选中文字后 `Ctrl+C` 或右键复制。
+- 左侧 **书签**页签可记录当前位置、添加纯文本笔记、删除标记，并在下次打开时跳回原章节和文字位置；书签保存在本地阅读状态中。
+- 左侧 **资料**页签显示 EPUB 元数据和封面。缺失或无法解码封面时仍可查看可读的书籍资料。
 - **排版 / 阅读界面**：点击主界面的“排版”，或偏好顶部“阅读界面”，打开独立面板。字体、字号、行距、字距、段距、页边距统一在此调整，数值变化立即预览当前实际书页；可继续在阅读器中翻页观察。保存后持久化，取消恢复原设置，保持语义阅读位置。面板尽量显示在阅读器旁，可自行拖动。
 - **偏好**或 `Ctrl+,`：设置配色、语言、颜色、透明度及快捷键。排版数值已移到阅读界面模块。
 - **文字颜色**：偏好 → 文字颜色 → 选择颜色，只改变书籍正文；选择“自动文字颜色”恢复主题/背景的自动配色。
@@ -39,7 +41,7 @@ Windows 本地 TXT / EPUB 阅读器。使用 **Python + PySide6（Qt Widgets）*
 ## 支持范围与限制
 
 - TXT 文件名作为标题，识别常见中文章回及英文 Chapter / Part 标题。保留文字、合并多余空行，段落间距由阅读偏好控制。
-- EPUB 读取标题、作者、spine 顺序、EPUB 2 NCX 和 EPUB 3 层级目录、可选印刷页码列表及正文内部锚点/超链接；书内链接保留原文显示，点击跳转到章节或片段。没有 page-list 时尝试使用正文 pagebreak 标记生成页码导航。章节按 spine 文档分组，长文分块不会被章节键误当作新章。外部链接不打开，不请求网络。支持 Qt 可解码的常见位图（PNG/JPEG/GIF 首帧/WebP 等）、安全静态 SVG，以及内联 SVG 包装的本地图片。插图按当前页宽高等比缩放并居中，图片型章节也可阅读。**不还原复杂 CSS、原书版式或竖排**；同一 XHTML 内多个目录锚点仍合并。包含在阅读顺序中的封面可显示，尚无书库封面缩略图。不执行原书 HTML / JavaScript。
+- EPUB 读取标题、作者、语言、标识符、出版者、日期、简介和封面；兼容 EPUB 3 `cover-image` 与 EPUB 2 `meta name=cover`。还读取 spine 顺序、EPUB 2 NCX 和 EPUB 3 层级目录、可选印刷页码列表及正文内部锚点/超链接；书内链接保留原文显示，点击跳转到章节或片段。没有 page-list 时尝试使用正文 pagebreak 标记生成页码导航。章节按 spine 文档分组，长文分块不会被章节键误当作新章。外部链接不打开，不请求网络。支持 Qt 可解码的常见位图（PNG/JPEG/GIF 首帧/WebP 等）、安全静态 SVG，以及内联 SVG 包装的本地图片。插图按当前页宽高等比缩放并居中，图片型章节也可阅读。**不还原复杂 CSS、原书版式或竖排**；同一 XHTML 内多个目录锚点仍合并。不执行原书 HTML / JavaScript。
 - 单张图像上限 8 MiB、1600 万像素，最多 512 处插图引用；仅缓存当前章节的解码图像并限制解码尺寸。拒绝外部资源、损坏图片及带活动/外部内容的 SVG；SVGZ、SVG 内嵌图片等复杂结构暂不支持。
 - 拒绝加密资源（包括 DRM 和字体混淆）、损坏结构、异常压缩包及不安全路径；不提取 ZIP 到磁盘。
 - 单文件上限 32 MiB；EPUB 总解压量上限 64 MiB、最多 4096 项。长章节按最多 24,000 字符分段，只排版当前分段；导入运行于后台线程。
@@ -67,12 +69,14 @@ Windows 本地 TXT / EPUB 阅读器。使用 **Python + PySide6（Qt Widgets）*
 .\.venv\Scripts\python.exe scripts/preferences_smoke.py
 .\.venv\Scripts\python.exe scripts/illustrations_smoke.py
 .\.venv\Scripts\python.exe scripts/navigation_smoke.py
+.\.venv\Scripts\python.exe scripts/epub_library_smoke.py
 .\scripts\build.ps1
 .\.venv\Scripts\python.exe scripts/packaged_smoke.py
 .\.venv\Scripts\python.exe scripts/packaged_smoke.py --focus
 .\.venv\Scripts\python.exe scripts/packaged_smoke.py --emergency
 .\.venv\Scripts\python.exe scripts/packaged_smoke.py --illustrated
 .\.venv\Scripts\python.exe scripts/packaged_smoke.py --navigation
+.\.venv\Scripts\python.exe scripts/packaged_smoke.py --library
 ```
 
 `pytest` 使用离屏 Qt；各 GUI 冒烟脚本打开实际 Windows 窗口并使用原创临时测试数据，验证后自动关闭，截图和报告位于忽略的 `artifacts/`。默认打包产物：`dist\QuietReader\QuietReader.exe`，必须保留整个目录。如果该目录中的旧版仍在运行，构建脚本会自动输出到独立的 `dist\releases\...\QuietReader`，不清理使用中的目录。可通过 `scripts/build.ps1 -OutputRoot dist/focus-release` 指定仓库 dist 内的独立输出根目录。最新成功构建的 EXE 路径记录在 `artifacts/latest-build.txt`，打包冒烟默认验证此路径，也可用 `--exe` 指定。使用新版前从托盘退出旧版，以便接续同一份本地进度。签名、安装器和干净系统兼容性仍需后续验收。

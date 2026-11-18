@@ -6,7 +6,7 @@ import os
 from PySide6.QtCore import QObject, QPoint, QRunnable, QThreadPool, Qt, QTimer, Signal
 from PySide6.QtGui import QAction, QColor, QGuiApplication, QIcon, QKeySequence, QPainter, QPen, QPixmap, QPolygon, QShortcut
 from PySide6.QtWidgets import (
-    QApplication, QComboBox, QDialog, QFileDialog, QHBoxLayout, QLabel,
+    QApplication, QComboBox, QDialog, QFileDialog, QHBoxLayout, QLabel, QInputDialog,
     QListWidget, QListWidgetItem, QMainWindow, QMenu, QPushButton,
     QSizeGrip, QSlider, QSystemTrayIcon, QTabWidget, QVBoxLayout, QWidget,
 )
@@ -15,12 +15,14 @@ from quietreader.content.local import ENCODINGS, ImportError as BookImportError,
 from quietreader.desktop.geometry import visible_bounds
 from quietreader.desktop.hotkey import GlobalHotkey
 from quietreader.desktop.window_effects import set_window_border_hidden
-from quietreader.domain.models import Position, Settings, restore_position
+from quietreader.domain.models import Bookmark, Position, Settings, restore_position
 from quietreader.ui.reader import PageView
 from quietreader.ui.settings import SettingsDialog
 from quietreader.ui.theme import colors, stylesheet
 from quietreader.i18n import tr, install_qt_translator
 from quietreader.ui.layout_panel import LayoutPanel
+from quietreader.ui.book_info import BookInfoPanel
+from quietreader.persistence.store import MAX_BOOKMARKS, MAX_BOOKMARK_NOTE
 
 
 def book_icon():
@@ -221,6 +223,26 @@ class MainWindow(QMainWindow):
         tabs.addTab(self.recent, "最近")
         tabs.addTab(self.pages, "页码")
         tabs.addTab(self.landmarks, "位置")
+        bookmark_panel = QWidget()
+        bookmark_layout = QVBoxLayout(bookmark_panel)
+        self.bookmarks = QListWidget()
+        self.bookmarks.setAccessibleName("书签与笔记")
+        self.bookmarks.itemActivated.connect(self._bookmark_activated)
+        self.bookmarks.itemClicked.connect(self._bookmark_activated)
+        bookmark_layout.addWidget(self.bookmarks, 1)
+        bookmark_actions = QHBoxLayout()
+        self.bookmark_add_button = self._button("添加书签", self.add_bookmark)
+        self.bookmark_note_button = self._button("编辑笔记", self.edit_bookmark_note)
+        self.bookmark_remove_button = self._button("删除书签", self.remove_bookmark)
+        bookmark_actions.addWidget(self.bookmark_add_button)
+        bookmark_actions.addWidget(self.bookmark_note_button)
+        bookmark_actions.addWidget(self.bookmark_remove_button)
+        bookmark_layout.addLayout(bookmark_actions)
+        tabs.addTab(bookmark_panel, "书签")
+        self.book_info = BookInfoPanel()
+        tabs.addTab(self.book_info, "资料")
+        tabs.setTabVisible(4, False)
+        tabs.setTabVisible(5, False)
         side.addWidget(tabs)
         side.addWidget(self._label("本地阅读 · 无需联网", "status"))
         body.addWidget(self.sidebar)
@@ -364,6 +386,10 @@ class MainWindow(QMainWindow):
         self.setWindowTitle(f"{book.title} · QuietReader")
         self.book_title.setText(book.title)
         self.book_title.setProperty("translation_source", None)
+        self.book_info.set_book(book, self.settings.language)
+        self.tabs.setTabVisible(4, True)
+        self.tabs.setTabVisible(5, True)
+        self._refresh_bookmarks()
         self.chapters.clear()
         self.pages.clear()
         self.landmarks.clear()
@@ -580,6 +606,99 @@ class MainWindow(QMainWindow):
         encoding = record.get("encoding", "auto")
         self.load_path(record["path"], encoding if encoding in ENCODINGS else "auto")
 
+    def _refresh_bookmarks(self):
+        self.bookmarks.clear()
+        if not self.book:
+            self.bookmark_note_button.setEnabled(False)
+            self.bookmark_remove_button.setEnabled(False)
+            return
+        records = self.store.state.get("bookmarks", {}).get(self.book.id, [])
+        for index, record in enumerate(records):
+            title = self.t("书签名称：{label}", label=record["label"])
+            note = record.get("note", "")
+            item = QListWidgetItem(title + (f"\n{note}" if note else ""))
+            item.setData(Qt.ItemDataRole.UserRole, index)
+            self.bookmarks.addItem(item)
+        self.bookmark_note_button.setEnabled(bool(records))
+        self.bookmark_remove_button.setEnabled(bool(records))
+
+    def add_bookmark(self):
+        if not self.book:
+            return
+        all_records = self.store.state.setdefault("bookmarks", {})
+        records = all_records.setdefault(self.book.id, [])
+        section = self.book.sections[self.section_index]
+        offset = self.reader.offset
+        for index, record in enumerate(records):
+            if record.get("section_id") == section.id and record.get("offset") == offset:
+                self.bookmarks.setCurrentRow(index)
+                self.set_status("书签已存在。")
+                return
+        if sum(len(values) for values in all_records.values()) >= MAX_BOOKMARKS:
+            self.set_status("书签数量已达上限。")
+            return
+        record = asdict(Bookmark(
+            section_id=section.id,
+            offset=offset,
+            label=f"{section.title} · {self.t('第 {page} 页', page=self.reader.page + 1)}",
+            note="",
+            created=datetime.now(timezone.utc).isoformat(),
+        ))
+        records.insert(0, record)
+        self._refresh_bookmarks()
+        self.bookmarks.setCurrentRow(0)
+        self.tabs.setCurrentIndex(4)
+        self.set_status("书签已添加。")
+        self.schedule_save()
+
+    def set_bookmark_note(self, index, note):
+        if not self.book:
+            return
+        records = self.store.state.get("bookmarks", {}).get(self.book.id, [])
+        if not 0 <= index < len(records):
+            return
+        records[index]["note"] = str(note).replace("\x00", "")[:MAX_BOOKMARK_NOTE]
+        self._refresh_bookmarks()
+        self.bookmarks.setCurrentRow(index)
+        self.schedule_save()
+
+    def edit_bookmark_note(self):
+        index = self.bookmarks.currentRow()
+        if not self.book or index < 0:
+            return
+        records = self.store.state.get("bookmarks", {}).get(self.book.id, [])
+        if index >= len(records):
+            return
+        note, accepted = QInputDialog.getMultiLineText(self, self.t("编辑笔记"), self.t("笔记"), records[index].get("note", ""))
+        if accepted:
+            self.set_bookmark_note(index, note)
+
+    def remove_bookmark(self):
+        index = self.bookmarks.currentRow()
+        if not self.book or index < 0:
+            return
+        records = self.store.state.get("bookmarks", {}).get(self.book.id, [])
+        if index < len(records):
+            records.pop(index)
+            self._refresh_bookmarks()
+            self.set_status("书签已删除。")
+            self.schedule_save()
+
+    def _bookmark_activated(self, item):
+        if not self.book or item is None:
+            return
+        index = item.data(Qt.ItemDataRole.UserRole)
+        records = self.store.state.get("bookmarks", {}).get(self.book.id, [])
+        if not isinstance(index, int) or not 0 <= index < len(records):
+            return
+        record = records[index]
+        target_index = next((i for i, section in enumerate(self.book.sections) if section.id == record["section_id"]), None)
+        if target_index is None:
+            self.set_status("书签目标不可用。")
+            return
+        self.open_section(target_index, record["offset"])
+        self.reader.setFocus()
+
     def _refresh_recent(self):
         self.recent.clear()
         for record in self.store.state["books"]:
@@ -656,6 +775,9 @@ class MainWindow(QMainWindow):
         self.tabs.setTabText(1, self.t("最近"))
         self.tabs.setTabText(2, self.t("页码"))
         self.tabs.setTabText(3, self.t("位置"))
+        self.tabs.setTabText(4, self.t("书签"))
+        self.tabs.setTabText(5, self.t("资料"))
+        self.book_info.set_book(self.book, self.settings.language)
         self._sync_chapter_button_labels()
         self.encoding.setItemText(0, self.t("自动识别"))
         self.focus_button.setText(self.t("退出专注" if self.focus_mode else "专注"))

@@ -87,3 +87,11 @@ GUI 测试仅使用脚本原创的临时文本及构造的 EPUB，不读取用�
 63 项 pytest 通过。`scripts/navigation_smoke.py` 在真实 Windows Qt 窗口验证层级目录、书内链接、页码/landmark 跳转、章节按钮和自定义按键；`scripts/packaged_smoke.py --navigation` 验证打包 EXE 导入临时导航 EPUB、保存阅读位置并正常退出。打包目录为 `dist/epub-navigation-release/QuietReader/QuietReader.exe`。冒烟脚本首次运行发现测试夹具导入路径缺少 `src`，已修复后重新通过。
 
 当前覆盖重排版 EPUB 的常见导航与跳转，不代表支持 EPUB 全部规范。固定版式、DRM、脚本、音视频、外部资源、任意 CSS 和复杂 MathML 仍不支持；EPUB 2/3 测试使用本地构造样本，真实出版物回归尚未覆盖。
+
+## 2026-11-18：书签、书籍资料和封面
+
+状态文件兼容地新增本地书签与纯文本笔记：上限 200 条、每条笔记最多 1000 个字符；已有版本 1 状态文件没有书签字段时自动视为空集合。书签可以恢复章节/字符偏移，也能编辑和删除笔记。EPUB 3 `cover-image` 与 EPUB 2 `meta name="cover"` 读取封面；缺失、无效或不可解码的封面回退到资料文字。资料面板显示书名、作者、语言、标识符、出版者、日期和简介，全部按纯文本呈现。
+
+71 项 pytest 通过，覆盖两种 EPUB 封面元数据、缺失/损坏封面、旧状态读取、非法记录过滤、笔记限长、UI 双语显示、书签新增/删除和重启定位。`scripts/epub_library_smoke.py` 在真实 Windows Qt 窗口验证封面和书签流程；新打包 EXE 通过 `scripts/packaged_smoke.py --library` 导入元数据及独立封面的临时 EPUB、保存位置并正常退出。包位于 `dist/epub-library-release/QuietReader/QuietReader.exe`。
+
+封面只显示 EPUB 声明的本地图片资源，不保存到用户状态文件；元数据简介从 XML 中提取为纯文本，不执行书中标记或样式。回归样本为本地构造的 EPUB，尚未覆盖不同出版软件生成的真实书籍集合。

@@ -44,6 +44,21 @@ class Book:
     toc: list[NavigationEntry] = field(default_factory=list)
     page_list: list[NavigationEntry] = field(default_factory=list)
     landmarks: list[NavigationEntry] = field(default_factory=list)
+    language: str = ""
+    identifier: str = ""
+    publisher: str = ""
+    publication_date: str = ""
+    description: str = ""
+    cover: bytes = b""
+
+
+@dataclass
+class Bookmark:
+    section_id: str
+    offset: int
+    label: str
+    note: str = ""
+    created: str = ""
 
 
 @dataclass

@@ -338,6 +338,27 @@ def _safe_vector(payload):
     return True
 
 
+def _validate_image_payload(payload):
+    if len(payload) > 8 * 1024 * 1024:
+        raise ImportError("EPUB 插图超过 8 MiB，无法安全读取。")
+    from PySide6.QtCore import QByteArray, QBuffer, QIODevice, Qt
+    from PySide6.QtGui import QImageReader
+    safe_vector = _safe_vector(payload)
+    buffer = QBuffer()
+    buffer.setData(QByteArray(payload))
+    buffer.open(QIODevice.OpenModeFlag.ReadOnly)
+    decoder = QImageReader(buffer)
+    if bytes(decoder.format()).lower() in (b"svg", b"svgz") and not safe_vector:
+        raise ImportError("EPUB 插图损坏或格式不受支持。")
+    size = decoder.size()
+    if not size.isValid() or size.width() * size.height() > 16000000:
+        raise ImportError("EPUB 插图尺寸过大或格式不受支持。")
+    decoder.setScaledSize(size.scaled(2000, 2000, Qt.AspectRatioMode.KeepAspectRatio))
+    if decoder.read().isNull():
+        raise ImportError("EPUB 插图损坏或格式不受支持。")
+    return payload
+
+
 def _load_epub(path: Path) -> tuple[str, str, list[Section]]:
     try:
         with zipfile.ZipFile(path) as archive:
@@ -361,9 +382,36 @@ def _load_epub(path: Path) -> tuple[str, str, list[Section]]:
             opf_path = _zip_path("", rootfile.attrib["full-path"])
             opf = ET.fromstring(archive.read(opf_path))
             base = posixpath.dirname(opf_path)
-            title = next((e.text.strip() for e in opf.iter() if _tag(e) == "title" and e.text and e.text.strip()), path.stem)
-            author = next((e.text.strip() for e in opf.iter() if _tag(e) == "creator" and e.text and e.text.strip()), "")
+            metadata = next((e for e in opf.iter() if _tag(e) == "metadata"), opf)
+
+            def metadata_values(name):
+                return [" ".join(" ".join(node.itertext()).split())[:4000] for node in metadata.iter() if _tag(node) == name and " ".join(" ".join(node.itertext()).split())]
+
+            title = next(iter(metadata_values("title")), path.stem)
+            authors = metadata_values("creator")
+            author = " · ".join(authors[:20])
+            language = next(iter(metadata_values("language")), "")[:100]
+            identifiers = [node for node in metadata.iter() if _tag(node) == "identifier" and " ".join(" ".join(node.itertext()).split())]
+            unique_id = opf.get("unique-identifier", "")
+            identifier_node = next((node for node in identifiers if node.get("id") == unique_id), identifiers[0] if identifiers else None)
+            identifier = " ".join(" ".join(identifier_node.itertext()).split())[:500] if identifier_node is not None else ""
+            publisher = next(iter(metadata_values("publisher")), "")[:500]
+            publication_date = next(iter(metadata_values("date")), "")[:100]
+            description = next(iter(metadata_values("description")), "")[:4000]
             manifest = {e.attrib["id"]: e.attrib for e in opf.iter() if _tag(e) == "item" and "id" in e.attrib}
+            cover_id = next((item["id"] for item in manifest.values() if "cover-image" in item.get("properties", "").split()), "")
+            if not cover_id:
+                cover_id = next((e.get("content", "") for e in metadata.iter() if _tag(e) == "meta" and e.get("name", "").lower() == "cover"), "")
+            cover = b""
+            cover_item = manifest.get(cover_id)
+            if cover_item and cover_item.get("href"):
+                try:
+                    cover_path = _zip_path(base, cover_item["href"])
+                    cover_info = archive.getinfo(cover_path)
+                    if cover_info.file_size <= 8 * 1024 * 1024:
+                        cover = _validate_image_payload(archive.read(cover_path))
+                except (ImportError, KeyError, OSError, ValueError, ET.ParseError):
+                    cover = b""
             navigation = {"toc": [], "page_list": [], "landmarks": []}
             for item in manifest.values():
                 media_type = item.get("media-type")
@@ -415,24 +463,7 @@ def _load_epub(path: Path) -> tuple[str, str, list[Section]]:
                         if payload is None:
                             payload = archive.read(image_path)
                             image_cache[image_path] = payload
-                        if len(payload) > 8 * 1024 * 1024:
-                            raise ImportError("EPUB 插图超过 8 MiB，无法安全读取。")
-                        from PySide6.QtCore import QByteArray, QBuffer, QIODevice, Qt
-                        from PySide6.QtGui import QImageReader
-                        safe_vector = _safe_vector(payload)
-                        buffer = QBuffer()
-                        buffer.setData(QByteArray(payload))
-                        buffer.open(QIODevice.OpenModeFlag.ReadOnly)
-                        decoder = QImageReader(buffer)
-                        if bytes(decoder.format()).lower() in (b"svg", b"svgz") and not safe_vector:
-                            raise ImportError("EPUB 插图损坏或格式不受支持。")
-                        size = decoder.size()
-                        pixels = size.width() * size.height()
-                        if not size.isValid() or pixels > 16000000:
-                            raise ImportError("EPUB 插图尺寸过大或格式不受支持。")
-                        decoder.setScaledSize(size.scaled(2000, 2000, Qt.AspectRatioMode.KeepAspectRatio))
-                        if decoder.read().isNull():
-                            raise ImportError("EPUB 插图损坏或格式不受支持。")
+                        _validate_image_payload(payload)
                         pictures.append(payload)
                         tail = node.tail
                         attributes = dict(node.attrib)
@@ -486,7 +517,8 @@ def _load_epub(path: Path) -> tuple[str, str, list[Section]]:
                 raise ImportError("EPUB 中没有可阅读的文字章节。")
             if not navigation["page_list"]:
                 navigation["page_list"] = content_pages
-            return title[:300], author[:300], sections, navigation
+            book_metadata = {"language": language, "identifier": identifier, "publisher": publisher, "publication_date": publication_date, "description": description, "cover": cover}
+            return title[:300], author[:300], sections, navigation, book_metadata
     except ImportError:
         raise
     except Exception:
@@ -514,8 +546,8 @@ def load_book(file: str | Path, encoding="auto") -> Book:
                 raise ImportError("文件超过 32 MiB，当前版本暂不支持。")
             text, detected = decode_text(data, encoding)
             return Book(book_id, str(path), path.stem, sections=parse_txt(text), encoding=detected)
-        title, author, sections, navigation = _load_epub(path)
-        return Book(book_id, str(path), title, author, sections, "EPUB", navigation["toc"], navigation["page_list"], navigation["landmarks"])
+        title, author, sections, navigation, metadata = _load_epub(path)
+        return Book(book_id, str(path), title, author, sections, "EPUB", navigation["toc"], navigation["page_list"], navigation["landmarks"], **metadata)
     except ImportError:
         raise
     except (OSError, ValueError):

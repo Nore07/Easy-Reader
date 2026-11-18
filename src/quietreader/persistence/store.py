@@ -7,10 +7,53 @@ import shutil
 from quietreader.domain.models import Settings
 
 VERSION = 1
+MAX_BOOKMARKS = 200
+MAX_BOOKMARK_NOTE = 1000
+
+
+def _clean_bookmarks(raw):
+    if not isinstance(raw, dict):
+        return {}
+    clean = {}
+    remaining = MAX_BOOKMARKS
+    for book_id, records in raw.items():
+        if remaining <= 0:
+            break
+        if not isinstance(book_id, str) or not book_id or len(book_id) > 100 or not isinstance(records, list):
+            continue
+        rows = []
+        for record in records:
+            if remaining <= 0:
+                break
+            if not isinstance(record, dict):
+                continue
+            section_id = record.get("section_id")
+            offset = record.get("offset")
+            label = record.get("label")
+            note = record.get("note", "")
+            created = record.get("created", "")
+            if (
+                not isinstance(section_id, str) or not section_id or len(section_id) > 200
+                or type(offset) is not int or not 0 <= offset <= 100_000_000
+                or not isinstance(label, str) or not label
+                or not isinstance(note, str) or not isinstance(created, str)
+            ):
+                continue
+            rows.append({
+                "section_id": section_id,
+                "offset": offset,
+                "label": label[:160],
+                "note": note[:MAX_BOOKMARK_NOTE],
+                "created": created[:40],
+            })
+            remaining -= 1
+        if rows:
+            clean[book_id] = rows
+    return clean
 
 
 def initial_state():
-    return {"version": VERSION, "settings": Settings().to_dict(), "books": [], "positions": {}, "last_book": "", "window": [100, 100, 1000, 760]}
+    return {"version": VERSION, "settings": Settings().to_dict(), "books": [], "positions": {}, "bookmarks": {}, "last_book": "", "window": [100, 100, 1000, 760]}
 
 
 class StateStore:
@@ -45,6 +88,7 @@ class StateStore:
                 clean["settings"] = Settings.from_dict(value.get("settings")).to_dict()
                 clean["books"] = [b for b in books[:100] if isinstance(b, dict) and all(isinstance(b.get(k), str) for k in ("id", "path", "title"))]
                 clean["positions"] = {k: p for k, p in positions.items() if isinstance(k, str) and isinstance(p, dict) and isinstance(p.get("section_id"), str) and type(p.get("offset")) is int}
+                clean["bookmarks"] = _clean_bookmarks(value.get("bookmarks", {}))
                 clean["last_book"] = value.get("last_book", "") if isinstance(value.get("last_book", ""), str) else ""
                 bounds = value.get("window")
                 if isinstance(bounds, list) and len(bounds) == 4 and all(type(v) is int and abs(v) < 100000 for v in bounds):
