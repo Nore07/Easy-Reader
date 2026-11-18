@@ -28,7 +28,7 @@ def stylesheet(palette, alpha=255, borderless=False):
     return f"""
     QWidget {{ color: {c['ink']}; font-family: 'Microsoft YaHei'; font-size: 13px; }}
     QMainWindow {{ background: transparent; }}
-    QWidget#surface {{ background: rgba({rgb},{alpha}); {surface_frame} }}
+    #surface {{ background: rgba({rgb},{alpha}); {surface_frame} }}
     QWidget#sidebar {{ background: {c['side']}; border-radius: 7px; }}
     QWidget#pageNavigation {{ background: {c['side']}; border-radius: 7px; }}
     QWidget#titleBar {{ background: transparent; }}

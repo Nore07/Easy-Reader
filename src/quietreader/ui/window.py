@@ -214,6 +214,7 @@ class MainWindow(QMainWindow):
     def _build_ui(self):
         self.surface = WindowSurface()
         self.surface.setObjectName("surface")
+        self.surface.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         self.setCentralWidget(self.surface)
         root = self.root_layout = QVBoxLayout(self.surface)
         root.setContentsMargins(14, 12, 14, 6)
