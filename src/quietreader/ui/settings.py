@@ -1,8 +1,8 @@
-from PySide6.QtGui import QColor, QFont
-from PySide6.QtCore import Signal
+from PySide6.QtGui import QColor, QFont, QGuiApplication, QWheelEvent
+from PySide6.QtCore import QCoreApplication, QEvent, QObject, QPointF, Signal
 from PySide6.QtWidgets import (
     QApplication,
-    QCheckBox, QColorDialog, QComboBox, QDialog, QDialogButtonBox, QDoubleSpinBox,
+    QAbstractSpinBox, QCheckBox, QColorDialog, QComboBox, QDialog, QDialogButtonBox, QDoubleSpinBox,
     QFontComboBox, QFormLayout, QLabel, QMessageBox, QHBoxLayout, QPushButton,
     QScrollArea, QSpinBox, QVBoxLayout, QWidget,
 )
@@ -12,6 +12,23 @@ from quietreader.desktop.color_picker import DesktopColorPicker
 from quietreader.i18n import tr, install_qt_translator
 from quietreader.keys import BINDING_FIELDS, binding_error
 from quietreader.ui.key_capture import KeyBindingButton
+from quietreader.ui.theme import colors, stylesheet
+
+
+class _PreferencesWheelFilter(QObject):
+    """Wheel over a closed editor scrolls the page instead of changing a value."""
+    def __init__(self, viewport, parent):
+        super().__init__(parent)
+        self.viewport = viewport
+
+    def eventFilter(self, watched, event):
+        if event.type() == QEvent.Type.Wheel:
+            position = self.viewport.mapFromGlobal(event.globalPosition().toPoint())
+            forwarded = QWheelEvent(QPointF(position), event.globalPosition(), event.pixelDelta(), event.angleDelta(), event.buttons(), event.modifiers(), event.phase(), event.inverted())
+            QCoreApplication.sendEvent(self.viewport, forwarded)
+            event.accept()
+            return True
+        return super().eventFilter(watched, event)
 
 
 class SettingsDialog(QDialog):
@@ -30,9 +47,12 @@ class SettingsDialog(QDialog):
         self.title = self.label("让阅读适合你")
         self.title.setObjectName("bookTitle")
         outer.addWidget(self.title)
-        scroll = QScrollArea()
+        scroll = self.scroll = QScrollArea()
+        scroll.setObjectName("preferencesScroll")
+        scroll.viewport().setObjectName("preferencesViewport")
         scroll.setWidgetResizable(True)
         content = QWidget()
+        content.setObjectName("preferencesContent")
         self.form = QFormLayout(content)
         self.form.setRowWrapPolicy(QFormLayout.RowWrapPolicy.WrapLongRows)
         self.form.setVerticalSpacing(10)
@@ -102,7 +122,20 @@ class SettingsDialog(QDialog):
         self.buttons.button(QDialogButtonBox.StandardButton.RestoreDefaults).clicked.connect(self.reset_defaults)
         outer.addWidget(self.buttons)
         self.language.currentIndexChanged.connect(self.retranslate)
+        self.theme.currentIndexChanged.connect(self._apply_theme)
+        QGuiApplication.styleHints().colorSchemeChanged.connect(self._apply_theme)
+        self.wheel_filter = _PreferencesWheelFilter(scroll.viewport(), self)
+        for field in self.findChildren(QAbstractSpinBox) + self.findChildren(QComboBox):
+            field.installEventFilter(self.wheel_filter)
+            if field.lineEdit():
+                field.lineEdit().installEventFilter(self.wheel_filter)
+        self._apply_theme()
         self.retranslate()
+
+    def _apply_theme(self, *args):
+        # Preferences stay opaque and use the selected UI theme, independently of
+        # the reader's transparency, picked desktop color and custom text color.
+        self.setStyleSheet(stylesheet(colors(self.theme.currentData())))
 
     def t(self, source):
         return tr(source, self.language.currentData())

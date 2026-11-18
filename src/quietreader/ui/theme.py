@@ -47,6 +47,14 @@ def stylesheet(palette, alpha=255):
     QTabBar::tab {{ padding: 9px 16px; border-bottom: 2px solid transparent; }}
     QTabBar::tab:selected {{ border-bottom: 2px solid {c['accent']}; }}
     QDialog {{ background: {c['paper']}; }}
+    QScrollArea#preferencesScroll {{ background: {c['paper']}; border: 1px solid {c['line']}; border-radius: 5px; }}
+    QWidget#preferencesContent, QWidget#preferencesViewport {{ background: {c['paper']}; }}
+    QComboBox QAbstractItemView {{ background: {c['paper']}; color: {c['ink']}; selection-background-color: {c['selected']}; selection-color: {c['ink']}; border: 1px solid {c['line']}; }}
+    QScrollArea#preferencesScroll QScrollBar:vertical {{ background: {c['side']}; width: 10px; margin: 0; }}
+    QScrollArea#preferencesScroll QScrollBar::handle:vertical {{ background: {c['muted']}; min-height: 25px; border-radius: 4px; }}
+    QScrollArea#preferencesScroll QScrollBar::handle:vertical:hover {{ background: {c['accent']}; }}
+    QScrollArea#preferencesScroll QScrollBar::add-line:vertical, QScrollArea#preferencesScroll QScrollBar::sub-line:vertical {{ height: 0; }}
+    QScrollArea#preferencesScroll QScrollBar::add-page:vertical, QScrollArea#preferencesScroll QScrollBar::sub-page:vertical {{ background: transparent; }}
     QComboBox, QSpinBox, QDoubleSpinBox, QFontComboBox, QLineEdit {{ background: {c['paper']}; border: 1px solid {c['line']}; border-radius: 4px; padding: 6px; min-height: 22px; }}
     QCheckBox {{ padding: 5px 0; }}
     QToolTip {{ background: {c['paper']}; color: {c['ink']}; border: 1px solid {c['line']}; }}
