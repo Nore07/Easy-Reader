@@ -20,9 +20,12 @@ def main():
     parser.add_argument("--focus", action="store_true", help="Verify English preferences and keyboard focus entry/exit in the executable")
     parser.add_argument("--emergency", action="store_true", help="Verify global hide/show, emergency process exit and restart")
     parser.add_argument("--illustrated", action="store_true", help="Import an EPUB with PNG and SVG illustrations")
+    parser.add_argument("--navigation", action="store_true", help="Import an EPUB with nested TOC, page-list and internal links")
     args = parser.parse_args()
     if args.emergency and (args.focus or args.transparent):
         parser.error("Run the emergency scenario separately")
+    if args.navigation and (args.illustrated or args.focus or args.transparent or args.emergency):
+        parser.error("Run the navigation scenario separately")
     if sys.platform != "win32":
         raise SystemExit("Windows only")
     root = Path(__file__).resolve().parents[1]
@@ -43,6 +46,7 @@ def main():
         directory = Path(temp)
         book = directory / "打包测试.txt"
         book.write_text("第一章\n独立可执行程序读取本地文字。\n" * 20, encoding="utf-8")
+        expected_title = "打包测试"
         if args.illustrated:
             book = directory / "打包测试.epub"
             def chunk(tag, payload):
@@ -55,6 +59,13 @@ def main():
                 archive.writestr("one.xhtml", '<html><body><p>Before</p><img src="art.png"/><p>Middle</p><img src="art.svg"/><p>After</p></body></html>')
                 archive.writestr("art.png", png)
                 archive.writestr("art.svg", '<svg xmlns="http://www.w3.org/2000/svg" width="80" height="100"><rect width="80" height="100" fill="blue"/></svg>')
+        if args.navigation:
+            sys.path.insert(0, str(root / "src"))
+            sys.path.insert(0, str(root / "tests"))
+            from test_content import epub_with_navigation
+            book = directory / "导航测试.epub"
+            book.write_bytes(epub_with_navigation())
+            expected_title = "导航测试"
         data = directory / "state"
         data.mkdir()
         settings = {"close_to_tray": False}
@@ -62,6 +73,8 @@ def main():
             settings.update(floating=True, opacity=0, background_color="#111111")
         if args.focus:
             settings.update(language="en", text_color="#123456", next_key="J", previous_key="K", focus_key="F8")
+        if args.navigation:
+            settings.update(next_chapter_key="Alt+J", previous_chapter_key="Alt+K")
         if args.emergency:
             settings.update(close_to_tray=True, global_hotkey=True, hotkey="Ctrl+Alt+F9", emergency_key="Ctrl+Alt+F8")
         (data / "state.json").write_text(json.dumps({"version": 1, "settings": settings, "books": [], "positions": {}}), encoding="utf-8")
@@ -89,7 +102,7 @@ def main():
                 observed_titles.append(title.value)
                 if title.value == "Unhandled exception in script":
                     user32.EnumChildWindows(hwnd, collect_error, 0)
-                if "打包测试" in title.value and "QuietReader" in title.value:
+                if expected_title in title.value and "QuietReader" in title.value:
                     windows.append(hwnd)
             return True
 
@@ -178,9 +191,12 @@ def main():
                 assert state["settings"]["text_color"] == "#123456"
                 assert state["settings"]["next_key"] == "J"
                 assert state["positions"][state["last_book"]]["section_id"] != first_section
+            if args.navigation:
+                assert state["settings"]["next_chapter_key"] == "Alt+J"
+                assert state["settings"]["previous_chapter_key"] == "Alt+K"
             output = root / "artifacts"
             output.mkdir(exist_ok=True)
-            report = {"executable_start": True, "book_import": True, "position_saved": True, "clean_exit": True, "illustrated_epub": args.illustrated, "transparent_startup": args.transparent, "focus_keyboard_and_english": args.focus, "global_visibility_emergency_restart": args.emergency, "emergency_exit_seconds": emergency_seconds, "startup_and_import_seconds": startup}
+            report = {"executable_start": True, "book_import": True, "position_saved": True, "clean_exit": True, "illustrated_epub": args.illustrated, "epub_navigation": args.navigation, "transparent_startup": args.transparent, "focus_keyboard_and_english": args.focus, "global_visibility_emergency_restart": args.emergency, "emergency_exit_seconds": emergency_seconds, "startup_and_import_seconds": startup}
             (output / "packaged-smoke.json").write_text(json.dumps(report, indent=2), encoding="utf-8")
             print(json.dumps(report))
         finally:

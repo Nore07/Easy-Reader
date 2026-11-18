@@ -45,6 +45,30 @@ def epub_bytes(encrypted=False, malicious=False):
     return output.getvalue()
 
 
+def epub_with_navigation(include_page_list=True):
+    output = io.BytesIO()
+    with zipfile.ZipFile(output, "w") as archive:
+        archive.writestr("mimetype", "application/epub+zip")
+        archive.writestr("META-INF/container.xml", '<container><rootfiles><rootfile full-path="OEBPS/book.opf"/></rootfiles></container>')
+        archive.writestr("OEBPS/book.opf", '''<package xmlns:dc="http://purl.org/dc/elements/1.1/"><metadata><dc:title>导航测试</dc:title></metadata>
+          <manifest><item id="nav" href="nav.xhtml" media-type="application/xhtml+xml" properties="nav"/>
+          <item id="one" href="Text/one.xhtml" media-type="application/xhtml+xml"/><item id="two" href="Text/two.xhtml" media-type="application/xhtml+xml"/></manifest>
+          <spine><itemref idref="one"/><itemref idref="two"/></spine></package>''')
+        page_list = '<nav epub:type="page-list"><ol><li><a href="Text/one.xhtml#page-12">12</a></li></ol></nav>' if include_page_list else ""
+        archive.writestr("OEBPS/nav.xhtml", f'''<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops"><body>
+          <nav epub:type="toc"><ol><li><a href="Text/one.xhtml#start">第一章</a><ol><li><a href="Text/two.xhtml#note">脚注</a></li></ol></li></ol></nav>
+          {page_list}
+          <nav epub:type="landmarks"><ol><li><a epub:type="bodymatter" href="Text/one.xhtml#start">正文</a></li></ol></nav>
+          </body></html>''')
+        long_text = "连续正文" * 6500
+        archive.writestr("OEBPS/Text/one.xhtml", f'''<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops"><body>
+          <h1 id="start">第一章</h1><p>阅读<a href="two.xhtml#note">脚注链接</a>。</p><p>{long_text}</p>
+          <span id="page-12" epub:type="pagebreak" title="12" role="doc-pagebreak"></span></body></html>''')
+        archive.writestr("OEBPS/Text/two.xhtml", '''<html xmlns="http://www.w3.org/1999/xhtml"><body><h1 id="chapter-two">第二章</h1>
+          <aside id="note">脚注正文</aside></body></html>''')
+    return output.getvalue()
+
+
 def test_epub_order_metadata_and_no_active_content(tmp_path):
     file = tmp_path / "test.epub"
     file.write_bytes(epub_bytes())
@@ -54,6 +78,69 @@ def test_epub_order_metadata_and_no_active_content(tmp_path):
     assert "你好，世界。" in book.sections[0].text
     assert "脚本" not in book.sections[0].text
     assert "不应出现" not in book.sections[0].text
+
+
+def test_epub3_toc_page_list_landmarks_and_internal_links_survive_chunking(tmp_path):
+    file = tmp_path / "navigation.epub"
+    file.write_bytes(epub_with_navigation())
+
+    book = load_book(file)
+
+    assert [(entry.label, entry.path, entry.fragment) for entry in getattr(book, "toc", [])] == [
+        ("第一章", "OEBPS/Text/one.xhtml", "start")
+    ]
+    assert [(entry.label, entry.path, entry.fragment) for entry in book.toc[0].children] == [
+        ("脚注", "OEBPS/Text/two.xhtml", "note")
+    ]
+    assert [(entry.label, entry.path, entry.fragment) for entry in getattr(book, "page_list", [])] == [
+        ("12", "OEBPS/Text/one.xhtml", "page-12")
+    ]
+    assert book.landmarks[0].semantic_type == "bodymatter"
+
+    one_sections = [section for section in book.sections if section.source_path == "OEBPS/Text/one.xhtml"]
+    assert len(one_sections) > 1
+    page_section = next(section for section in one_sections if "page-12" in section.anchors)
+    assert page_section.anchors["page-12"] >= 0
+    first = one_sections[0]
+    link = next(link for link in first.links if link.path == "OEBPS/Text/two.xhtml")
+    assert first.text[link.start:link.end] == "脚注链接"
+    assert link.fragment == "note"
+    assert next(section for section in book.sections if section.source_path == link.path).anchors["note"] >= 0
+
+
+def test_epub_pagebreaks_supply_page_navigation_when_page_list_is_absent(tmp_path):
+    file = tmp_path / "pagebreaks.epub"
+    file.write_bytes(epub_with_navigation(include_page_list=False))
+
+    book = load_book(file)
+
+    assert [(entry.label, entry.path, entry.fragment) for entry in book.page_list] == [
+        ("12", "OEBPS/Text/one.xhtml", "page-12")
+    ]
+
+
+def test_epub2_ncx_preserves_nested_toc_and_printed_pages(tmp_path):
+    output = io.BytesIO()
+    with zipfile.ZipFile(output, "w") as archive:
+        archive.writestr("mimetype", "application/epub+zip")
+        archive.writestr("META-INF/container.xml", '<container><rootfiles><rootfile full-path="book.opf"/></rootfiles></container>')
+        archive.writestr("book.opf", '''<package><metadata><title>NCX</title></metadata>
+          <manifest><item id="ncx" href="toc.ncx" media-type="application/x-dtbncx+xml"/><item id="one" href="one.xhtml" media-type="application/xhtml+xml"/></manifest>
+          <spine toc="ncx"><itemref idref="one"/></spine></package>''')
+        archive.writestr("toc.ncx", '''<ncx><navMap><navPoint><navLabel><text>第一章</text></navLabel><content src="one.xhtml#start"/>
+          <navPoint><navLabel><text>小节</text></navLabel><content src="one.xhtml#part"/></navPoint></navPoint></navMap>
+          <pageList><pageTarget><navLabel><text>1</text></navLabel><content src="one.xhtml#page1"/></pageTarget></pageList></ncx>''')
+        archive.writestr("one.xhtml", '<html><body><h1 id="start">第一章</h1><h2 id="part">小节</h2><span id="page1">1</span></body></html>')
+    file = tmp_path / "ncx.epub"
+    file.write_bytes(output.getvalue())
+
+    book = load_book(file)
+
+    assert getattr(book, "toc", [])[0].label == "第一章"
+    assert book.toc[0].children[0].label == "小节"
+    assert book.toc[0].children[0].fragment == "part"
+    assert book.page_list[0].label == "1"
+    assert book.page_list[0].fragment == "page1"
 
 
 @pytest.mark.parametrize("options", [{"encrypted": True}, {"malicious": True}])

@@ -11,11 +11,14 @@ import zipfile
 from charset_normalizer import from_bytes
 from defusedxml import ElementTree as ET
 
-from quietreader.domain.models import Book, Section
+from quietreader.domain.models import Book, EPUBLink, NavigationEntry, Section
 
 MAX_FILE = 32 * 1024 * 1024
 MAX_EXPANDED = 64 * 1024 * 1024
 CHUNK_SIZE = 24000
+MAX_EPUB_ANCHORS = 100000
+MAX_EPUB_LINKS = 50000
+MAX_EPUB_NAV_ENTRIES = 20000
 ENCODINGS = ("auto", "utf-8", "utf-8-sig", "utf-16", "utf-16-le", "utf-16-be", "gb18030", "gbk")
 
 
@@ -107,33 +110,199 @@ class TextExtractor(HTMLParser):
     def __init__(self):
         super().__init__(convert_charrefs=True)
         self.parts = []
+        self.length = 0
         self.blocked = 0
         self.heading_depth = 0
         self.heading = []
+        self.anchors = {}
+        self.links = []
+        self.pagebreaks = []
+        self._open_links = []
+
+    def _append(self, value):
+        if value:
+            self.parts.append(value)
+            self.length += len(value)
 
     def handle_starttag(self, tag, attrs):
         if tag in ("script", "style", "head", "svg", "math", "iframe", "object"):
             self.blocked += 1
-        if not self.blocked:
-            if tag in ("h1", "h2", "h3"):
-                self.heading_depth += 1
-            if tag in ("p", "div", "br", "li", "h1", "h2", "h3", "section", "tr"):
-                self.parts.append("\n")
+        if self.blocked:
+            return
+        values = {key.rsplit(":", 1)[-1].rsplit("}", 1)[-1].lower(): value for key, value in attrs if key}
+        anchor = values.get("id") or (values.get("name") if tag == "a" else "")
+        if anchor:
+            if anchor not in self.anchors and len(self.anchors) >= MAX_EPUB_ANCHORS:
+                raise ImportError("EPUB 锚点数量超过当前支持范围。")
+            self.anchors.setdefault(anchor, self.length)
+        semantic = (values.get("type", "") + " " + values.get("role", "")).lower().split()
+        if "pagebreak" in semantic or "doc-pagebreak" in semantic:
+            self.pagebreaks.append({"offset": self.length, "fragment": anchor or "", "label": values.get("title") or values.get("aria-label") or anchor or ""})
+        if tag in ("a", "area") and values.get("href"):
+            if len(self.links) + len(self._open_links) >= MAX_EPUB_LINKS:
+                raise ImportError("EPUB 内部链接数量超过当前支持范围。")
+            self._open_links.append((self.length, values["href"]))
+        if tag in ("h1", "h2", "h3"):
+            self.heading_depth += 1
+        if tag in ("p", "div", "br", "li", "h1", "h2", "h3", "section", "tr"):
+            self._append("\n")
 
     def handle_endtag(self, tag):
         if tag in ("script", "style", "head", "svg", "math", "iframe", "object"):
             self.blocked = max(0, self.blocked - 1)
-        if not self.blocked:
-            if tag in ("h1", "h2", "h3"):
-                self.heading_depth = max(0, self.heading_depth - 1)
-            if tag in ("p", "div", "li", "h1", "h2", "h3", "section", "tr"):
-                self.parts.append("\n")
+            return
+        if self.blocked:
+            return
+        if tag in ("a", "area") and self._open_links:
+            start, href = self._open_links.pop()
+            self.links.append((start, self.length, href))
+        if tag in ("h1", "h2", "h3"):
+            self.heading_depth = max(0, self.heading_depth - 1)
+        if tag in ("p", "div", "li", "h1", "h2", "h3", "section", "tr"):
+            self._append("\n")
 
     def handle_data(self, data):
         if not self.blocked:
-            self.parts.append(data)
+            self._append(data)
             if self.heading_depth:
                 self.heading.append(data)
+
+    def close(self):
+        super().close()
+        while self._open_links:
+            start, href = self._open_links.pop()
+            self.links.append((start, self.length, href))
+
+
+def _normalize_with_positions(text, positions):
+    """Apply the text cleanup while keeping source offsets in the cleaned text."""
+    wanted = sorted(set(max(0, min(len(text), value)) for value in positions))
+    mapped = {}
+    output = []
+    output_length = 0
+    event = 0
+
+    def exact(start, end):
+        nonlocal event, output_length
+        while event < len(wanted) and wanted[event] < end:
+            mapped[wanted[event]] = output_length + wanted[event] - start
+            event += 1
+        output.append(text[start:end])
+        output_length += end - start
+
+    cursor = 0
+    for match in re.finditer(r"\s+", text):
+        exact(cursor, match.start())
+        whitespace = match.group()
+        replacement = "\n" if whitespace.count("\n") >= 2 else re.sub(r"[ \t]+", " ", whitespace)
+        while event < len(wanted) and wanted[event] < match.end():
+            mapped[wanted[event]] = output_length + (len(replacement) if wanted[event] > match.start() else 0)
+            event += 1
+        output.append(replacement)
+        output_length += len(replacement)
+        cursor = match.end()
+    exact(cursor, len(text))
+    while event < len(wanted):
+        mapped[wanted[event]] = output_length
+        event += 1
+    intermediate = "".join(output)
+    left_trim = len(intermediate) - len(intermediate.lstrip())
+    cleaned = intermediate.strip()
+    result = {position: max(0, min(len(cleaned), offset - left_trim)) for position, offset in mapped.items()}
+    return cleaned, result
+
+
+def _attribute(element, name):
+    for key, value in element.attrib.items():
+        if key.rsplit(":", 1)[-1].rsplit("}", 1)[-1].lower() == name:
+            return value
+    return ""
+
+
+def _navigation_target(document_path, href):
+    try:
+        parsed = urlsplit(href)
+        if parsed.scheme or parsed.netloc or "\\" in href:
+            return None
+        path = _zip_path(posixpath.dirname(document_path), parsed.path) if parsed.path else document_path
+        return path, unquote(parsed.fragment)
+    except (ImportError, ValueError):
+        return None
+
+
+def _xhtml_navigation_items(parent, document_path):
+    def parse_item(node):
+        label_node = next((child for child in node if _tag(child) in ("a", "span")), None)
+        if label_node is None:
+            return None
+        label = "".join(label_node.itertext()).strip()
+        target = _navigation_target(document_path, label_node.get("href", "")) if label_node.get("href") else None
+        children = []
+        for child in node:
+            if _tag(child) == "ol":
+                children.extend(parse_item(value) for value in child if _tag(value) == "li")
+        children = [child for child in children if child is not None]
+        if not label or (target is None and not children):
+            return None
+        path, fragment = target if target else ("", "")
+        return NavigationEntry(label, path, fragment, children, _attribute(label_node, "type"))
+
+    lists = [child for child in parent if _tag(child) == "ol"]
+    if lists:
+        return [entry for ordered in lists for entry in (parse_item(item) for item in ordered if _tag(item) == "li") if entry]
+    return [
+        NavigationEntry("".join(node.itertext()).strip(), *(_navigation_target(document_path, node.get("href")) or ("", "")), semantic_type=_attribute(node, "type"))
+        for node in parent.iter() if _tag(node) == "a" and node.get("href") and "".join(node.itertext()).strip()
+    ]
+
+
+def _parse_epub3_navigation(root, document_path):
+    result = {"toc": [], "page_list": [], "landmarks": []}
+    has_toc = False
+    for nav in (element for element in root.iter() if _tag(element) == "nav"):
+        kinds = _attribute(nav, "type").split()
+        kind = next((value for value in kinds if value in result), "")
+        if not kind and not has_toc:
+            kind = "toc"  # Compatibility with older EPUB3 files that omit epub:type.
+        if not kind:
+            continue
+        entries = _xhtml_navigation_items(nav, document_path)
+        if entries and not result[kind]:
+            result[kind] = entries
+        if kind == "toc":
+            has_toc = True
+    return result
+
+
+def _parse_ncx_navigation(root, document_path):
+    result = {"toc": [], "page_list": [], "landmarks": []}
+
+    def point(node, element_name):
+        label_node = next((child for child in node if _tag(child) in ("navLabel", "pageLabel")), None)
+        content = next((child for child in node if _tag(child) in ("content", "navTarget")), None)
+        label = "".join(label_node.itertext()).strip() if label_node is not None else ""
+        target = _navigation_target(document_path, content.get("src", "")) if content is not None else None
+        children = [point(child, element_name) for child in node if _tag(child) == element_name]
+        children = [child for child in children if child is not None]
+        if not label or target is None:
+            return None
+        path, fragment = target
+        return NavigationEntry(label, path, fragment, children, _attribute(node, "type"))
+
+    for node in root.iter():
+        if _tag(node) == "navMap":
+            result["toc"] = [entry for entry in (point(child, "navPoint") for child in node if _tag(child) == "navPoint") if entry]
+        elif _tag(node) == "pageList":
+            result["page_list"] = [entry for entry in (point(child, "pageTarget") for child in node if _tag(child) == "pageTarget") if entry]
+        elif _tag(node) == "navList" and _attribute(node, "type").lower() == "landmarks":
+            result["landmarks"] = [entry for entry in (point(child, "navTarget") for child in node if _tag(child) == "navTarget") if entry]
+    return result
+
+
+def _walk_navigation(entry):
+    yield entry
+    for child in entry.children:
+        yield from _walk_navigation(child)
 
 
 def _tag(element):
@@ -195,21 +364,27 @@ def _load_epub(path: Path) -> tuple[str, str, list[Section]]:
             title = next((e.text.strip() for e in opf.iter() if _tag(e) == "title" and e.text and e.text.strip()), path.stem)
             author = next((e.text.strip() for e in opf.iter() if _tag(e) == "creator" and e.text and e.text.strip()), "")
             manifest = {e.attrib["id"]: e.attrib for e in opf.iter() if _tag(e) == "item" and "id" in e.attrib}
-            labels = {}
+            navigation = {"toc": [], "page_list": [], "landmarks": []}
             for item in manifest.values():
-                if "nav" in item.get("properties", "").split() or item.get("media-type") == "application/x-dtbncx+xml":
+                media_type = item.get("media-type")
+                is_ncx = media_type == "application/x-dtbncx+xml"
+                if "nav" in item.get("properties", "").split() or is_ncx:
                     nav_path = _zip_path(base, item["href"])
                     nav = ET.fromstring(archive.read(nav_path))
-                    for node in nav.iter():
-                        if _tag(node) == "a" and node.get("href"):
-                            target = _zip_path(posixpath.dirname(nav_path), node.get("href"))
-                            labels.setdefault(target, "".join(node.itertext()).strip())
-                        elif _tag(node) == "navPoint":
-                            content = next((e for e in node if _tag(e) == "content"), None)
-                            label = next((e for e in node if _tag(e) == "navLabel"), None)
-                            if content is not None and label is not None:
-                                labels.setdefault(_zip_path(posixpath.dirname(nav_path), content.get("src", "")), "".join(label.itertext()).strip())
+                    parsed = _parse_ncx_navigation(nav, nav_path) if is_ncx else _parse_epub3_navigation(nav, nav_path)
+                    pending = list(entry for entries in parsed.values() for entry in entries)
+                    nav_count = 0
+                    while pending:
+                        current = pending.pop()
+                        nav_count += 1
+                        pending.extend(current.children)
+                    if nav_count > MAX_EPUB_NAV_ENTRIES:
+                        raise ImportError("EPUB 目录项目数量超过当前支持范围。")
+                    for kind, entries in parsed.items():
+                        if entries and (is_ncx is False or not navigation[kind]):
+                            navigation[kind] = entries
             sections = []
+            content_pages = []
             image_cache = {}
             image_count = 0
             for ref in (e for e in opf.iter() if _tag(e) == "itemref" and e.get("linear", "yes") != "no"):
@@ -260,28 +435,58 @@ def _load_epub(path: Path) -> tuple[str, str, list[Section]]:
                             raise ImportError("EPUB 插图损坏或格式不受支持。")
                         pictures.append(payload)
                         tail = node.tail
+                        attributes = dict(node.attrib)
                         node.clear()
                         node.tag = "div"
+                        node.attrib.update(attributes)
                         node.text, node.tail = "\ufffc", tail
                 parser = TextExtractor()
                 parser.feed(ET.tostring(element, encoding="unicode"))
-                text = re.sub(r"[ \t]+", " ", "".join(parser.parts))
-                text = re.sub(r"\n\s*\n+", "\n", text).strip()
+                parser.close()
+                raw_text = "".join(parser.parts)
+                source_offsets = list(parser.anchors.values())
+                for start, end, _ in parser.links:
+                    source_offsets.extend((start, end))
+                source_offsets.extend(page["offset"] for page in parser.pagebreaks)
+                text, normalized = _normalize_with_positions(raw_text, source_offsets)
                 if text:
-                    chapter_title = labels.get(item_path) or "".join(parser.heading).strip() or f"章节 {len(sections) + 1}"
+                    nav_titles = (entry for root_entry in navigation["toc"] for entry in _walk_navigation(root_entry))
+                    chapter_title = next((entry.label for entry in nav_titles if entry.path == item_path and entry.label), "".join(parser.heading).strip()) or f"章节 {len(sections) + 1}"
                     positions = [i for i, char in enumerate(text) if char == "\ufffc"]
                     if len(positions) != len(pictures):
                         raise ImportError("EPUB 插图结构不受支持。")
                     images = dict(zip(positions, pictures))
+                    anchors = {name: normalized[offset] for name, offset in parser.anchors.items()}
+                    links = []
+                    for start, end, href in parser.links:
+                        target = _navigation_target(item_path, href)
+                        if target and normalized[end] > normalized[start]:
+                            links.append(EPUBLink(normalized[start], normalized[end], *target))
+                    for number, page in enumerate(parser.pagebreaks, 1):
+                        content_pages.append(NavigationEntry(
+                            page["label"] or f"{number}", item_path, page["fragment"], source_offset=normalized[page["offset"]]
+                        ))
                     chunks = split_section("epub:" + item_path, chapter_title[:160], text)
                     start = 0
-                    for chunk in chunks:
+                    for chunk_index, chunk in enumerate(chunks):
+                        end = start + len(chunk.text)
                         chunk.images = {offset - start: data for offset, data in images.items() if start <= offset < start + len(chunk.text)}
-                        start += len(chunk.text)
+                        chunk.source_path = item_path
+                        chunk.anchors = {
+                            name: offset - start for name, offset in anchors.items()
+                            if start <= offset < end or chunk_index == len(chunks) - 1 and offset == end
+                        }
+                        chunk.links = [
+                            EPUBLink(max(start, link.start) - start, min(end, link.end) - start, link.path, link.fragment)
+                            for link in links if link.start < end and link.end > start
+                        ]
+                        start = end
                     sections.extend(chunks)
             if not sections:
                 raise ImportError("EPUB 中没有可阅读的文字章节。")
-            return title[:300], author[:300], sections
+            if not navigation["page_list"]:
+                navigation["page_list"] = content_pages
+            return title[:300], author[:300], sections, navigation
     except ImportError:
         raise
     except Exception:
@@ -309,8 +514,8 @@ def load_book(file: str | Path, encoding="auto") -> Book:
                 raise ImportError("文件超过 32 MiB，当前版本暂不支持。")
             text, detected = decode_text(data, encoding)
             return Book(book_id, str(path), path.stem, sections=parse_txt(text), encoding=detected)
-        title, author, sections = _load_epub(path)
-        return Book(book_id, str(path), title, author, sections, "EPUB")
+        title, author, sections, navigation = _load_epub(path)
+        return Book(book_id, str(path), title, author, sections, "EPUB", navigation["toc"], navigation["page_list"], navigation["landmarks"])
     except ImportError:
         raise
     except (OSError, ValueError):

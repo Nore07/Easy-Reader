@@ -105,7 +105,15 @@ class SettingsDialog(QDialog):
             field.setChecked(getattr(settings, key))
             self.fields[key] = field
             self.form.addRow(field)
-        for key, label in [("next_key", "下一页（正文聚焦时）"), ("previous_key", "上一页（正文聚焦时）"), ("focus_key", "切换专注模式"), ("hotkey", "显示 / 隐藏快捷键"), ("emergency_key", "紧急退出快捷键")]:
+        for key, label in [
+            ("next_key", "下一页（正文聚焦时）"),
+            ("previous_key", "上一页（正文聚焦时）"),
+            ("next_chapter_key", "下一章（正文聚焦时）"),
+            ("previous_chapter_key", "上一章（正文聚焦时）"),
+            ("focus_key", "切换专注模式"),
+            ("hotkey", "显示 / 隐藏快捷键"),
+            ("emergency_key", "紧急退出快捷键"),
+        ]:
             field = KeyBindingButton(getattr(settings, key), settings.language)
             field.capture_started.connect(self.capture_started.emit)
             field.capture_finished.connect(self.capture_finished.emit)
@@ -113,6 +121,7 @@ class SettingsDialog(QDialog):
             self.row(label, field)
         self.hotkey = self.fields["hotkey"]
         self.note("点击修改，然后按下一个按键或组合键。Esc 取消录入。\nEsc 固定退出专注模式；打开、偏好和复制的快捷键保留。")
+        self.note("PageUp / PageDown 翻页，Ctrl+PageUp / Ctrl+PageDown 切换章节；两组按键都可以修改。")
         self.note("专注模式仅显示正文，F10（可修改）或 Esc 退出，也可从托盘或正文右键菜单退出。")
         self.note("同一按键切换隐藏和显示。启用全局快捷键后，窗口隐藏或失去焦点时也可使用。\n紧急退出直接关闭程序，不隐藏到托盘，也不等待后台导入；会尝试保存当前位置。")
         self.buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Save | QDialogButtonBox.StandardButton.Cancel | QDialogButtonBox.StandardButton.RestoreDefaults)

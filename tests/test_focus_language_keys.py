@@ -19,11 +19,13 @@ from quietreader.ui.window import MainWindow
 
 
 def test_new_preferences_and_arbitrary_bindings_roundtrip(tmp_path):
-    settings = Settings.from_dict(dict(text_color="#aBcDef", language="en", next_key="J", previous_key="Ctrl+K", focus_key="F8", hotkey="Alt+F9"))
+    settings = Settings.from_dict(dict(text_color="#aBcDef", language="en", next_key="J", previous_key="Ctrl+K", next_chapter_key="Alt+J", previous_chapter_key="Alt+K", focus_key="F8", hotkey="Alt+F9"))
     assert settings.text_color == "#abcdef"
     assert settings.language == "en"
     assert settings.next_key == "J"
     assert settings.previous_key == "Ctrl+K"
+    assert settings.next_chapter_key == "Alt+J"
+    assert settings.previous_chapter_key == "Alt+K"
     assert settings.focus_key == "F8"
     assert settings.hotkey == "Alt+F9"
     store = StateStore(tmp_path)
@@ -40,6 +42,15 @@ def test_bindings_reserved_conflicts_and_windows_translation():
     assert Settings.from_dict(dict(next_key="J", previous_key="J")).next_key == "PgDown"
     assert windows_hotkey("Alt+F9") == (1, 0x78)
     assert windows_hotkey("Ctrl+Alt+Left") == (3, 0x25)
+
+
+def test_legacy_shortcuts_keep_existing_binding_when_chapter_keys_are_added():
+    settings = Settings.from_dict({"next_key": "Ctrl+PgDown", "previous_key": "Ctrl+PgUp"})
+
+    assert settings.next_key == "Ctrl+PgDown"
+    assert settings.previous_key == "Ctrl+PgUp"
+    assert settings.next_chapter_key != settings.next_key
+    assert settings.previous_chapter_key != settings.previous_key
 
 
 def test_key_capture_physical_keys_and_cancel(app):
@@ -197,6 +208,8 @@ def test_settings_english_and_custom_text_color(app):
     dialog.set_text_color(QColor("#112233"))
     assert dialog.values().text_color == "#112233"
     assert dialog.fields["next_key"].sequence == "PgDown"
+    assert dialog.fields["next_chapter_key"].sequence == "Ctrl+PgDown"
+    assert dialog.fields["previous_chapter_key"].sequence == "Ctrl+PgUp"
     assert tr("打开", "en") == "Open"
     dialog.reset_defaults()
     assert dialog.values().text_color == ""

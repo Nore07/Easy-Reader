@@ -209,8 +209,18 @@ class MainWindow(QMainWindow):
         self.recent.setAccessibleName("最近阅读")
         self.recent.itemActivated.connect(self._recent_activated)
         self.recent.itemClicked.connect(self._recent_activated)
+        self.pages = QListWidget()
+        self.pages.setAccessibleName("书中页码")
+        self.pages.itemActivated.connect(self._page_activated)
+        self.pages.itemClicked.connect(self._page_activated)
+        self.landmarks = QListWidget()
+        self.landmarks.setAccessibleName("书中位置")
+        self.landmarks.itemActivated.connect(self._page_activated)
+        self.landmarks.itemClicked.connect(self._page_activated)
         tabs.addTab(self.chapters, "目录")
         tabs.addTab(self.recent, "最近")
+        tabs.addTab(self.pages, "页码")
+        tabs.addTab(self.landmarks, "位置")
         side.addWidget(tabs)
         side.addWidget(self._label("本地阅读 · 无需联网", "status"))
         body.addWidget(self.sidebar)
@@ -224,6 +234,8 @@ class MainWindow(QMainWindow):
         reading.addWidget(self.chapter_title)
         self.reader = PageView()
         self.reader.turned.connect(self.turn_page)
+        self.reader.chapter_turned.connect(self.turn_chapter)
+        self.reader.link_activated.connect(self.open_epub_link)
         self.reader.exit_focus.connect(lambda: self.toggle_focus() if self.focus_mode else None)
         self.reader.focus_requested.connect(self.toggle_focus)
         self.reader.visibility_requested.connect(self.toggle_visible)
@@ -239,14 +251,20 @@ class MainWindow(QMainWindow):
         navigation_widget = QWidget()
         navigation = QHBoxLayout(navigation_widget)
         navigation.setContentsMargins(0, 0, 0, 0)
+        self.previous_chapter = self._button("上一章", lambda: self.turn_chapter(-1))
+        self.previous_chapter.setToolTip("上一章")
         self.previous = self._button("← 上一页", lambda: self.turn_page(-1))
         self.next = self._button("下一页 →", lambda: self.turn_page(1))
+        self.next_chapter = self._button("下一章", lambda: self.turn_chapter(1))
+        self.next_chapter.setToolTip("下一章")
         self.page_label = self._label("PageUp / PageDown", "status")
+        navigation.addWidget(self.previous_chapter)
         navigation.addWidget(self.previous)
         navigation.addStretch()
         navigation.addWidget(self.page_label)
         navigation.addStretch()
         navigation.addWidget(self.next)
+        navigation.addWidget(self.next_chapter)
         reading.addWidget(navigation_widget)
         body.addLayout(reading, 1)
         root.addLayout(body, 1)
@@ -347,8 +365,31 @@ class MainWindow(QMainWindow):
         self.book_title.setText(book.title)
         self.book_title.setProperty("translation_source", None)
         self.chapters.clear()
-        for section in book.sections:
-            self.chapters.addItem(section.title)
+        self.pages.clear()
+        self.landmarks.clear()
+        if book.toc:
+            for entry in book.toc:
+                self._add_navigation_items(self.chapters, entry)
+        if not self.chapters.count():
+            for index, section in enumerate(book.sections):
+                item = QListWidgetItem(section.title)
+                item.setData(Qt.ItemDataRole.UserRole, (index, 0))
+                self.chapters.addItem(item)
+        for entry in book.page_list:
+            target = self._resolve_navigation_target(entry.path, entry.fragment, entry.source_offset)
+            if target is not None:
+                item = QListWidgetItem(entry.label)
+                item.setData(Qt.ItemDataRole.UserRole, target)
+                self.pages.addItem(item)
+        for entry in book.landmarks:
+            target = self._resolve_navigation_target(entry.path, entry.fragment, entry.source_offset)
+            if target is not None:
+                item = QListWidgetItem(entry.label)
+                item.setData(Qt.ItemDataRole.UserRole, target)
+                self.landmarks.addItem(item)
+        self.tabs.setTabVisible(2, self.pages.count() > 0)
+        self.tabs.setTabVisible(3, self.landmarks.count() > 0)
+        self.tabs.setCurrentIndex(0)
         raw = self.store.state["positions"].get(book.id, {})
         index, offset = restore_position(book.sections, Position(raw.get("section_id", ""), raw.get("offset", 0)))
         self.open_section(index, offset)
@@ -362,6 +403,50 @@ class MainWindow(QMainWindow):
         self.encoding.setCurrentIndex(max(0, self.encoding.findData(book.encoding)))
         self.save_state()
         self.reader.setFocus()
+
+    def _add_navigation_items(self, widget, entry, depth=0):
+        target = self._resolve_navigation_target(entry.path, entry.fragment, entry.source_offset)
+        if target is None and not entry.children:
+            return
+        item = QListWidgetItem(("　" * depth) + entry.label)
+        item.setData(Qt.ItemDataRole.UserRole, target)
+        widget.addItem(item)
+        for child in entry.children:
+            self._add_navigation_items(widget, child, depth + 1)
+
+    def _resolve_navigation_target(self, path, fragment="", source_offset=-1):
+        if not self.book or not path:
+            return None
+        candidates = [(index, section) for index, section in enumerate(self.book.sections) if section.source_path == path]
+        if fragment:
+            for index, section in candidates:
+                if fragment in section.anchors:
+                    return index, section.anchors[fragment]
+            return None
+        if source_offset >= 0:
+            for position, (index, section) in enumerate(candidates):
+                if source_offset < len(section.text) or position == len(candidates) - 1:
+                    return index, min(source_offset, len(section.text))
+            return None
+        return (candidates[0][0], 0) if candidates else None
+
+    def _activate_navigation_item(self, item):
+        target = item.data(Qt.ItemDataRole.UserRole)
+        if target is not None:
+            self.open_section(*target)
+            self.reader.setFocus()
+
+    def _page_activated(self, item):
+        self._activate_navigation_item(item)
+
+    def open_epub_link(self, link):
+        target = self._resolve_navigation_target(link.path, link.fragment)
+        if target is None:
+            self.set_status("书内链接目标不可用。")
+            return False
+        self.open_section(*target)
+        self.reader.setFocus()
+        return True
 
     def _failed(self, message, encoding_choice):
         if self.focus_mode:
@@ -392,8 +477,47 @@ class MainWindow(QMainWindow):
         section = self.book.sections[index]
         self.chapter_title.setText(section.title)
         self.chapter_title.setProperty("translation_source", None)
-        self.chapters.setCurrentRow(index)
-        self.reader.set_text(section.text, offset, section.images)
+        self._select_toc_target(index, offset)
+        self.reader.set_text(section.text, offset, section.images, section.links)
+        self._update_progress()
+        self.schedule_save()
+
+    def _select_toc_target(self, section_index, offset):
+        best_row = -1
+        best_offset = -1
+        for row in range(self.chapters.count()):
+            target = self.chapters.item(row).data(Qt.ItemDataRole.UserRole)
+            if target and target[0] == section_index and target[1] <= offset and target[1] >= best_offset:
+                best_row, best_offset = row, target[1]
+        self.chapters.setCurrentRow(best_row)
+
+    @staticmethod
+    def _chapter_identity(section):
+        if section.source_path:
+            return section.source_path
+        return section.id.rpartition(":")[0] or section.id
+
+    def _chapter_destination(self, direction):
+        if not self.book or direction not in (-1, 1):
+            return None
+        identity = self._chapter_identity(self.book.sections[self.section_index])
+        candidate = self.section_index + direction
+        while 0 <= candidate < len(self.book.sections) and self._chapter_identity(self.book.sections[candidate]) == identity:
+            candidate += direction
+        if not 0 <= candidate < len(self.book.sections):
+            return None
+        if direction < 0:
+            target_identity = self._chapter_identity(self.book.sections[candidate])
+            while candidate > 0 and self._chapter_identity(self.book.sections[candidate - 1]) == target_identity:
+                candidate -= 1
+        return candidate
+
+    def turn_chapter(self, direction):
+        target = self._chapter_destination(direction)
+        if target is None:
+            return
+        self.open_section(target)
+        self.reader.setFocus()
         self._update_progress()
         self.schedule_save()
 
@@ -419,6 +543,8 @@ class MainWindow(QMainWindow):
             return
         self.previous.setEnabled(ready and (self.section_index > 0 or self.reader.page > 0))
         self.next.setEnabled(ready and (self.section_index + 1 < len(self.book.sections) or self.reader.page + 1 < self.reader.page_count))
+        self.previous_chapter.setEnabled(ready and self._chapter_destination(-1) is not None)
+        self.next_chapter.setEnabled(ready and self._chapter_destination(1) is not None)
         self.progress.setEnabled(ready)
         self.focus_button.setEnabled(ready)
         if hasattr(self, "tray_focus_action"):
@@ -447,8 +573,7 @@ class MainWindow(QMainWindow):
         self.reader.setFocus()
 
     def _chapter_activated(self, item):
-        self.open_section(self.chapters.row(item))
-        self.reader.setFocus()
+        self._activate_navigation_item(item)
 
     def _recent_activated(self, item):
         record = item.data(Qt.ItemDataRole.UserRole)
@@ -529,6 +654,9 @@ class MainWindow(QMainWindow):
                         getattr(widget, setter)(self.t(original))
         self.tabs.setTabText(0, self.t("目录"))
         self.tabs.setTabText(1, self.t("最近"))
+        self.tabs.setTabText(2, self.t("页码"))
+        self.tabs.setTabText(3, self.t("位置"))
+        self._sync_chapter_button_labels()
         self.encoding.setItemText(0, self.t("自动识别"))
         self.focus_button.setText(self.t("退出专注" if self.focus_mode else "专注"))
         if hasattr(self, "tray_focus_action"):
@@ -590,6 +718,15 @@ class MainWindow(QMainWindow):
             for widget in self.chrome_widgets:
                 widget.hide()
         self.schedule_save()
+
+    def _sync_chapter_button_labels(self):
+        if not hasattr(self, "previous_chapter"):
+            return
+        compact = self.width() < 620
+        self.previous_chapter.setText("‹" if compact else self.t("上一章"))
+        self.next_chapter.setText("›" if compact else self.t("下一章"))
+        self.previous_chapter.setToolTip(self.t("上一章"))
+        self.next_chapter.setToolTip(self.t("下一章"))
 
     def _configure_hotkeys(self, enabled=None):
         settings = self.settings
@@ -695,6 +832,7 @@ class MainWindow(QMainWindow):
             self.sidebar.setVisible(self.sidebar_requested and not self.focus_mode and (self.sidebar_manual or not self.settings.floating and self.width() >= 700))
             self.eyebrow.setVisible(self.width() >= 700 and not self.focus_mode)
             self.brand.setVisible(self.width() >= 700 and not self.focus_mode)
+            self._sync_chapter_button_labels()
 
     def moveEvent(self, event):
         super().moveEvent(event)

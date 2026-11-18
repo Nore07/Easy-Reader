@@ -24,6 +24,8 @@ def python_offset(text: str, utf16_offset: int) -> int:
 class PageView(QWidget):
     turned = Signal(int)
     reflowed = Signal()
+    link_activated = Signal(object)
+    chapter_turned = Signal(int)
     exit_focus = Signal()
     focus_requested = Signal()
     visibility_requested = Signal()
@@ -36,6 +38,7 @@ class PageView(QWidget):
         self.text = ""
         self.images = {}
         self.image_sizes = {}
+        self.links = []
         self.offset = 0
         self.page = 0
         self.page_count = 1
@@ -48,7 +51,7 @@ class PageView(QWidget):
         self.setMinimumSize(160, 140)
         self.setMouseTracking(True)
 
-    def set_text(self, text: str, offset=0, images=None):
+    def set_text(self, text: str, offset=0, images=None, links=None):
         self.text = text
         self.offset = max(0, min(len(text), offset))
         previous = self.document
@@ -57,6 +60,7 @@ class PageView(QWidget):
         self.document.setPlainText(text)
         self.images = {}
         self.image_sizes = {}
+        self.links = list(links or [])
         for position, payload in (images or {}).items():
             data = QBuffer(self)
             data.setData(QByteArray(payload))
@@ -115,6 +119,19 @@ class PageView(QWidget):
             image_block.setAlignment(Qt.AlignmentFlag.AlignHCenter)
             cursor.mergeBlockFormat(image_block)
             self.image_sizes[position] = scaled
+        c = colors(self.settings.theme, self.settings.background_color if self.settings.floating else "")
+        if self.settings.text_color:
+            c["ink"] = self.settings.text_color
+        for link in self.links:
+            if link.end <= link.start:
+                continue
+            cursor = QTextCursor(self.document)
+            cursor.setPosition(qt_offset(self.text, link.start))
+            cursor.setPosition(qt_offset(self.text, link.end), QTextCursor.MoveMode.KeepAnchor)
+            fmt = QTextCharFormat()
+            fmt.setForeground(QColor(c["accent"]))
+            fmt.setFontUnderline(True)
+            cursor.mergeCharFormat(fmt)
         self.page_count = max(1, self.document.pageCount())
         offsets = [None] * self.page_count
         offsets[0] = 0
@@ -190,13 +207,24 @@ class PageView(QWidget):
     def mousePressEvent(self, event):
         if event.button() == Qt.MouseButton.LeftButton:
             self.setFocus()
-            self.selection.setPosition(self._hit(event.position()))
+            hit = self._hit(event.position())
+            python_hit = python_offset(self.text, hit)
+            link = next((item for item in self.links if item.start <= python_hit < item.end), None)
+            if link is not None:
+                self.link_activated.emit(link)
+                event.accept()
+                return
+            self.selection.setPosition(hit)
             self.update()
 
     def mouseMoveEvent(self, event):
         if event.buttons() & Qt.MouseButton.LeftButton:
             self.selection.setPosition(self._hit(event.position()), QTextCursor.MoveMode.KeepAnchor)
             self.update()
+        else:
+            hit = python_offset(self.text, self._hit(event.position()))
+            clickable = any(link.start <= hit < link.end for link in self.links)
+            self.setCursor(Qt.CursorShape.PointingHandCursor if clickable else Qt.CursorShape.ArrowCursor)
 
     def contextMenuEvent(self, event):
         menu = QMenu(self)
@@ -228,5 +256,9 @@ class PageView(QWidget):
             self.turned.emit(1)
         elif sequence == self.settings.previous_key:
             self.turned.emit(-1)
+        elif sequence == self.settings.next_chapter_key:
+            self.chapter_turned.emit(1)
+        elif sequence == self.settings.previous_chapter_key:
+            self.chapter_turned.emit(-1)
         else:
             super().keyPressEvent(event)

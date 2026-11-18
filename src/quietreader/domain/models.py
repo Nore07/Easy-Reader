@@ -5,11 +5,32 @@ from quietreader.keys import BINDING_FIELDS, binding_error, normalize_binding
 
 
 @dataclass
+class EPUBLink:
+    start: int
+    end: int
+    path: str
+    fragment: str = ""
+
+
+@dataclass
+class NavigationEntry:
+    label: str
+    path: str
+    fragment: str = ""
+    children: list["NavigationEntry"] = field(default_factory=list)
+    semantic_type: str = ""
+    source_offset: int = -1
+
+
+@dataclass
 class Section:
     id: str
     title: str
     text: str
     images: dict[int, bytes] = field(default_factory=dict)
+    source_path: str = ""
+    anchors: dict[str, int] = field(default_factory=dict)
+    links: list[EPUBLink] = field(default_factory=list)
 
 
 @dataclass
@@ -20,6 +41,9 @@ class Book:
     author: str = ""
     sections: list[Section] = field(default_factory=list)
     encoding: str = ""
+    toc: list[NavigationEntry] = field(default_factory=list)
+    page_list: list[NavigationEntry] = field(default_factory=list)
+    landmarks: list[NavigationEntry] = field(default_factory=list)
 
 
 @dataclass
@@ -54,6 +78,8 @@ class Settings:
     emergency_key: str = "Ctrl+Alt+Q"
     next_key: str = "PgDown"
     previous_key: str = "PgUp"
+    next_chapter_key: str = "Ctrl+PgDown"
+    previous_chapter_key: str = "Ctrl+PgUp"
     focus_key: str = "F10"
 
     @classmethod
@@ -90,6 +116,14 @@ class Settings:
         if "emergency_key" not in raw:
             used = {value for key, value in bindings.items() if key != "emergency_key"}
             bindings["emergency_key"] = next(key for key in ("Ctrl+Alt+Q", "Ctrl+Shift+Q", "Ctrl+Alt+Shift+Q", "Ctrl+Alt+F9", "Ctrl+Alt+F8") if key not in used)
+        for field, candidates in [
+            ("next_chapter_key", ("Ctrl+Shift+PgDown", "Alt+PgDown", "Ctrl+Alt+PgDown", "Ctrl+Shift+N")),
+            ("previous_chapter_key", ("Ctrl+Shift+PgUp", "Alt+PgUp", "Ctrl+Alt+PgUp", "Ctrl+Shift+P")),
+        ]:
+            if field not in raw or not bindings[field]:
+                used = {value for key, value in bindings.items() if key != field}
+                if bindings[field] in used:
+                    bindings[field] = next((candidate for candidate in candidates if candidate not in used), bindings[field])
         if not binding_error(bindings):
             for key, value in bindings.items():
                 setattr(result, key, value)

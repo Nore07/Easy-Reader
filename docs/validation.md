@@ -79,3 +79,11 @@ GUI 测试仅使用脚本原创的临时文本及构造的 EPUB，不读取用�
 57 项 pytest 通过，覆盖进入/退出时边框属性调用、DWM 隐藏/默认颜色参数及全透明表面无边框样式。Windows 11 的临时 Qt 窗口确认 DWM 隐藏边框调用成功；`scripts/focus_smoke.py` 通过。新打包 EXE 的 `--focus` 和 `--transparent` 冒烟通过。
 
 新包为 `dist/focus-border-release/QuietReader/QuietReader.exe`。DWM API 依据 [DWMWINDOWATTRIBUTE 官方文档](https://learn.microsoft.com/en-us/windows/win32/api/dwmapi/ne-dwmapi-dwmwindowattribute)；Windows 10 实机未验证。
+
+## 2026-11-18：EPUB 章节和书内导航
+
+新增 EPUB 3 层级目录、EPUB 2 NCX 目录、可选印刷页码列表、pagebreak 页码回退、landmarks 结构位置、正文片段链接、独立上一章/下一章按钮与可修改章节快捷键。分段长章节仍可逐页连续阅读；章节跳转按原 EPUB 文档分组。所有跳转只解析 EPUB ZIP 内的路径与锚点，不访问外网。目录和页码导航基于 EPUB 3.3 的 spine、nav toc、可选 page-list 和 landmarks 结构（[EPUB 3.3](https://www.w3.org/TR/epub-33/)；[EPUB Reading Systems 3.3](https://www.w3.org/TR/epub-rs-33/)）。
+
+63 项 pytest 通过。`scripts/navigation_smoke.py` 在真实 Windows Qt 窗口验证层级目录、书内链接、页码/landmark 跳转、章节按钮和自定义按键；`scripts/packaged_smoke.py --navigation` 验证打包 EXE 导入临时导航 EPUB、保存阅读位置并正常退出。打包目录为 `dist/epub-navigation-release/QuietReader/QuietReader.exe`。冒烟脚本首次运行发现测试夹具导入路径缺少 `src`，已修复后重新通过。
+
+当前覆盖重排版 EPUB 的常见导航与跳转，不代表支持 EPUB 全部规范。固定版式、DRM、脚本、音视频、外部资源、任意 CSS 和复杂 MathML 仍不支持；EPUB 2/3 测试使用本地构造样本，真实出版物回归尚未覆盖。

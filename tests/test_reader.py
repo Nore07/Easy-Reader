@@ -1,4 +1,4 @@
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QPoint, Qt
 from PySide6.QtTest import QTest
 
 from quietreader.domain.models import Settings
@@ -38,6 +38,28 @@ def test_text_selection_copy_and_focus_keys(app):
     view.turned.connect(turns.append)
     QTest.keyClick(view, Qt.Key.Key_PageDown)
     assert turns == [1]
+
+
+def test_internal_epub_link_is_activated_when_its_text_is_clicked(app):
+    view = PageView()
+    view.resize(500, 220)
+    link = type("Link", (), {"start": 5, "end": 12, "path": "Text/notes.xhtml", "fragment": "note-1"})()
+    view.set_text("Read footnote now")
+    view.links = [link]
+    view.show()
+    app.processEvents()
+    assert hasattr(view, "link_activated")
+    activated = []
+    view.link_activated.connect(activated.append)
+
+    block = view.document.begin()
+    line = block.layout().lineAt(0)
+    x = view.settings.padding + line.cursorToX(qt_offset(view.text, 8))[0]
+    y = view.settings.padding + line.y() + line.height() / 2
+    QTest.mouseClick(view, Qt.MouseButton.LeftButton, pos=QPoint(round(x), round(y)))
+
+    assert activated == [link]
+    view.close()
 
 
 def test_paragraph_spacing_is_not_multiplied_by_relayout(app):
