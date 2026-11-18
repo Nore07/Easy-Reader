@@ -31,7 +31,7 @@ def main():
         QTest.qWait(100)
         assert dialog.scroll.widget().grab().toImage().pixelColor(1, 1).name() == colors("dark")["paper"]
         dialog.grab().save(str(output / "preferences-dark-zh.png"))
-        fields = [dialog.language, dialog.theme, dialog.font] + [field for field in dialog.fields.values() if isinstance(field, QAbstractSpinBox)]
+        fields = [dialog.language, dialog.theme] + [field for field in dialog.fields.values() if isinstance(field, QAbstractSpinBox)]
         for field in fields:
             field.setFocus()
             dialog.scroll.ensureWidgetVisible(field)
@@ -54,10 +54,10 @@ def main():
         assert dialog.scroll.widget().grab().toImage().pixelColor(1, 1).name() == colors("light")["paper"]
         dialog.grab().save(str(output / "preferences-light-preview.png"))
         assert window.settings.theme == "dark"
-        size = dialog.fields["font_size"]
+        size = dialog.fields["opacity"]
         previous = size.value()
         QTest.keyClick(size, Qt.Key.Key_Up)
-        assert size.value() == previous + 1
+        assert size.value() == previous + size.singleStep()
         dialog.reject()
         window.shutdown()
     print("Native dark preferences, English layout, live theme preview, wheel scroll without edits and keyboard edits: PASS")

@@ -23,6 +23,9 @@ class _PreferencesWheelFilter(QObject):
 
     def eventFilter(self, watched, event):
         if event.type() == QEvent.Type.Wheel:
+            if self.viewport is None:
+                event.accept()
+                return True
             position = self.viewport.mapFromGlobal(event.globalPosition().toPoint())
             forwarded = QWheelEvent(QPointF(position), event.globalPosition(), event.pixelDelta(), event.angleDelta(), event.buttons(), event.modifiers(), event.phase(), event.inverted())
             QCoreApplication.sendEvent(self.viewport, forwarded)
@@ -34,11 +37,13 @@ class _PreferencesWheelFilter(QObject):
 class SettingsDialog(QDialog):
     capture_started = Signal()
     capture_finished = Signal()
+    layout_requested = Signal()
 
     def __init__(self, settings, parent=None):
         super().__init__(parent)
         self.resize(710, 790)
         self.original_language = settings.language
+        self.base_settings = settings
         self.texts = []
         self.fields = {}
         self.background_color = settings.background_color
@@ -47,6 +52,7 @@ class SettingsDialog(QDialog):
         self.title = self.label("让阅读适合你")
         self.title.setObjectName("bookTitle")
         outer.addWidget(self.title)
+        outer.addWidget(self.button("阅读界面", self.open_layout))
         scroll = self.scroll = QScrollArea()
         scroll.setObjectName("preferencesScroll")
         scroll.viewport().setObjectName("preferencesViewport")
@@ -68,9 +74,6 @@ class SettingsDialog(QDialog):
             self.theme.addItem(label, code)
         self.theme.setCurrentIndex(self.theme.findData(settings.theme))
         self.row("配色", self.theme)
-        self.font = QFontComboBox()
-        self.font.setCurrentFont(QFont(settings.font_family))
-        self.row("字体", self.font)
         self.color_label = QLabel()
         self.text_color_label = QLabel()
         self.picker = DesktopColorPicker(self)
@@ -87,9 +90,7 @@ class SettingsDialog(QDialog):
         text_row.addWidget(self.button("自动文字颜色", self.reset_text_color))
         self.row("文字颜色", text_row)
         for key, label, low, high, step in [
-            ("font_size", "字号（像素）", 14, 42, 1), ("line_height", "行距倍数", 1.2, 2.5, 0.1),
-            ("letter_spacing", "字距（像素）", 0.0, 5.0, 0.1), ("paragraph_spacing", "段距（像素）", 0, 40, 1),
-            ("padding", "页边距（像素）", 12, 72, 2), ("opacity", "浮窗背景不透明度", 0.0, 1.0, 0.05),
+            ("opacity", "浮窗背景不透明度", 0.0, 1.0, 0.05),
         ]:
             field = QDoubleSpinBox() if isinstance(step, float) else QSpinBox()
             field.setRange(low, high)
@@ -140,6 +141,10 @@ class SettingsDialog(QDialog):
     def t(self, source):
         return tr(source, self.language.currentData())
 
+    def open_layout(self):
+        self.reject()
+        self.layout_requested.emit()
+
     def label(self, source):
         label = QLabel()
         label.setWordWrap(True)
@@ -176,9 +181,9 @@ class SettingsDialog(QDialog):
 
     def reset_defaults(self):
         defaults = Settings()
+        self.base_settings = defaults
         self.theme.setCurrentIndex(0)
         self.language.setCurrentIndex(0)
-        self.font.setCurrentFont(QFont(defaults.font_family))
         self.reset_background_color()
         self.reset_text_color()
         for key, field in self.fields.items():
@@ -191,7 +196,8 @@ class SettingsDialog(QDialog):
                 field.setValue(value)
 
     def values(self):
-        data = {"theme": self.theme.currentData(), "language": self.language.currentData(), "background_color": self.background_color, "text_color": self.text_color, "font_family": self.font.currentFont().family()}
+        data = self.base_settings.to_dict()
+        data.update(theme=self.theme.currentData(), language=self.language.currentData(), background_color=self.background_color, text_color=self.text_color)
         for key, field in self.fields.items():
             if isinstance(field, QCheckBox):
                 data[key] = field.isChecked()

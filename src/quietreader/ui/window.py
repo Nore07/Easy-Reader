@@ -19,6 +19,7 @@ from quietreader.ui.reader import PageView
 from quietreader.ui.settings import SettingsDialog
 from quietreader.ui.theme import colors, stylesheet
 from quietreader.i18n import tr, install_qt_translator
+from quietreader.ui.layout_panel import LayoutPanel
 
 
 def book_icon():
@@ -162,6 +163,7 @@ class MainWindow(QMainWindow):
         self.open_button.setObjectName("primary")
         self.open_button.setToolTip("打开本地 TXT / EPUB · Ctrl+O")
         top.addWidget(self.open_button)
+        top.addWidget(self._button("排版", self.show_layout_panel))
         top.addWidget(self._button("偏好", self.show_settings))
         top.addWidget(self._button("隐藏", self.hide_or_minimize))
         self.close_button = self._button("×", self.close)
@@ -390,7 +392,7 @@ class MainWindow(QMainWindow):
         self.chapter_title.setText(section.title)
         self.chapter_title.setProperty("translation_source", None)
         self.chapters.setCurrentRow(index)
-        self.reader.set_text(section.text, offset)
+        self.reader.set_text(section.text, offset, section.images)
         self._update_progress()
         self.schedule_save()
 
@@ -609,8 +611,32 @@ class MainWindow(QMainWindow):
         dialog = SettingsDialog(self.settings, self)
         dialog.capture_started.connect(lambda: self._configure_hotkeys(False))
         dialog.capture_finished.connect(lambda: self._configure_hotkeys())
+        dialog.layout_requested.connect(self.show_layout_panel)
         if dialog.exec() == QDialog.DialogCode.Accepted:
             self.apply_settings(dialog.values())
+
+    def create_layout_panel(self):
+        if self.focus_mode:
+            self.toggle_focus()
+        panel = LayoutPanel(self.settings, self)
+        area = self.screen().availableGeometry()
+        x = self.frameGeometry().right() + 12
+        if x + panel.width() > area.right():
+            x = self.frameGeometry().left() - panel.width() - 12
+        panel.move(max(area.left(), min(x, area.right() - panel.width())), max(area.top(), min(self.y(), area.bottom() - panel.height())))
+        def merged(values):
+            return replace(self.settings, font_family=values.font_family, **{key: getattr(values, key) for key in panel.fields})
+        panel.preview.connect(lambda values: self.reader.apply_settings(merged(values)))
+        panel.accepted.connect(lambda: self.apply_settings(merged(panel.values())))
+        panel.rejected.connect(lambda: self.reader.apply_settings(self.settings))
+        return panel
+
+    def show_layout_panel(self):
+        if getattr(self, "layout_panel", None) and self.layout_panel.isVisible():
+            self.layout_panel.raise_()
+            return
+        self.layout_panel = self.create_layout_panel()
+        self.layout_panel.show()
 
     def _system_theme_changed(self, *args):
         if self.settings.theme == "system":

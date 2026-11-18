@@ -63,3 +63,11 @@ GUI 测试仅使用脚本原创的临时文本及构造的 EPUB，不读取用�
 `scripts/preferences_smoke.py` 已在真实 Windows 验证中英文夜读、浅色预览、滚轮只滚动及键盘编辑，并检查生成的界面截图。滚动到末尾时继续向下不改变页面或控件值，符合预期。最终包及独立程序回归结果随本阶段交付提供。
 
 最终包为 `dist/preferences-release/QuietReader/QuietReader.exe`。独立 EXE 的 `--focus`、`--emergency` 和 `--transparent` 回归全部通过；旧程序和已有阅读状态未被修改。
+
+## 2026-11-18：实时排版与 EPUB 插图
+
+字体及五项排版数值统一到独立非模态“阅读界面”面板，当前书页实时预览，保存持久化、取消恢复。图片通过本地 ZIP 资源与单字符锚点接入 Qt 文档，不执行原书 HTML；按页尺寸等比缩放，保留图文顺序并去除图片段距生成的尾部空页。SVG 在解码前检查外部引用与活动内容，资源字节、像素和引用数量设上限。
+
+54 项测试通过：包含实际图片上下部像素、图文顺序、图片型 SVG 章节、无效及外部资源拒绝、面板即时预览/取消/保存及全部原功能。Windows `scripts/illustrations_smoke.py` 验证图像像素和真实阅读面板，书页及面板截图已检查。样本为自行生成的 PNG、SVG 和 EPUB，未使用用户书籍；真实出版物的复杂 CSS、SVGZ、SVG 内嵌图像等仍有限制，见 README。
+
+最终包：`dist/illustrated-release/QuietReader/QuietReader.exe`。独立 EXE 的 `--illustrated` 已实际导入含 PNG 和 SVG 的 EPUB，保存位置并正常退出；`--focus` 与 `--emergency` 回归通过。原偏好与专注的 Windows 冒烟也通过。排版预览面板不等待关闭即可在阅读器观察变化；设置仍使用版本 1，原偏好的排版字段迁移到专门入口，原数值保留。

@@ -9,6 +9,7 @@ class Section:
     id: str
     title: str
     text: str
+    images: dict[int, bytes] = field(default_factory=dict)
 
 
 @dataclass

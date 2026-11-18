@@ -8,6 +8,9 @@ import subprocess
 import sys
 import tempfile
 import time
+import struct
+import zlib
+import zipfile
 
 
 def main():
@@ -16,6 +19,7 @@ def main():
     parser.add_argument("--exe", type=Path, help="Executable to verify; defaults to the latest successful build")
     parser.add_argument("--focus", action="store_true", help="Verify English preferences and keyboard focus entry/exit in the executable")
     parser.add_argument("--emergency", action="store_true", help="Verify global hide/show, emergency process exit and restart")
+    parser.add_argument("--illustrated", action="store_true", help="Import an EPUB with PNG and SVG illustrations")
     args = parser.parse_args()
     if args.emergency and (args.focus or args.transparent):
         parser.error("Run the emergency scenario separately")
@@ -39,6 +43,18 @@ def main():
         directory = Path(temp)
         book = directory / "打包测试.txt"
         book.write_text("第一章\n独立可执行程序读取本地文字。\n" * 20, encoding="utf-8")
+        if args.illustrated:
+            book = directory / "打包测试.epub"
+            def chunk(tag, payload):
+                return struct.pack("!I", len(payload)) + tag + payload + struct.pack("!I", zlib.crc32(tag + payload))
+            png = b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack("!2I5B", 40, 60, 8, 2, 0, 0, 0)) + chunk(b"IDAT", zlib.compress((b"\x00" + b"\xff\x00\x00" * 40) * 60)) + chunk(b"IEND", b"")
+            with zipfile.ZipFile(book, "w") as archive:
+                archive.writestr("mimetype", "application/epub+zip")
+                archive.writestr("META-INF/container.xml", '<container><rootfiles><rootfile full-path="book.opf"/></rootfiles></container>')
+                archive.writestr("book.opf", '<package><metadata><title>打包测试</title></metadata><manifest><item id="one" href="one.xhtml" media-type="application/xhtml+xml"/></manifest><spine><itemref idref="one"/></spine></package>')
+                archive.writestr("one.xhtml", '<html><body><p>Before</p><img src="art.png"/><p>Middle</p><img src="art.svg"/><p>After</p></body></html>')
+                archive.writestr("art.png", png)
+                archive.writestr("art.svg", '<svg xmlns="http://www.w3.org/2000/svg" width="80" height="100"><rect width="80" height="100" fill="blue"/></svg>')
         data = directory / "state"
         data.mkdir()
         settings = {"close_to_tray": False}
@@ -164,7 +180,7 @@ def main():
                 assert state["positions"][state["last_book"]]["section_id"] != first_section
             output = root / "artifacts"
             output.mkdir(exist_ok=True)
-            report = {"executable_start": True, "book_import": True, "position_saved": True, "clean_exit": True, "transparent_startup": args.transparent, "focus_keyboard_and_english": args.focus, "global_visibility_emergency_restart": args.emergency, "emergency_exit_seconds": emergency_seconds, "startup_and_import_seconds": startup}
+            report = {"executable_start": True, "book_import": True, "position_saved": True, "clean_exit": True, "illustrated_epub": args.illustrated, "transparent_startup": args.transparent, "focus_keyboard_and_english": args.focus, "global_visibility_emergency_restart": args.emergency, "emergency_exit_seconds": emergency_seconds, "startup_and_import_seconds": startup}
             (output / "packaged-smoke.json").write_text(json.dumps(report, indent=2), encoding="utf-8")
             print(json.dumps(report))
         finally:

@@ -48,7 +48,7 @@ def test_wheel_scrolls_preferences_without_changing_controls(app, focused):
     app.processEvents()
     scroll = dialog.findChild(QScrollArea)
     assert scroll.verticalScrollBar().maximum() > 0
-    fields = [dialog.language, dialog.theme, dialog.font] + [field for field in dialog.fields.values() if isinstance(field, QAbstractSpinBox)]
+    fields = [dialog.language, dialog.theme] + [field for field in dialog.fields.values() if isinstance(field, QAbstractSpinBox)]
     for field in fields:
         if focused:
             field.setFocus()
@@ -71,9 +71,12 @@ def test_wheel_scrolls_preferences_without_changing_controls(app, focused):
 
 
 def test_explicit_keyboard_edits_still_work(app):
+    from quietreader.ui.layout_panel import LayoutPanel
+    panel = LayoutPanel(Settings())
+    panel.show()
     dialog = SettingsDialog(Settings())
     dialog.show()
-    size = dialog.fields["font_size"]
+    size = panel.fields["font_size"]
     size.setFocus()
     QTest.keyClick(size, Qt.Key.Key_Up)
     assert size.value() == Settings().font_size + 1
@@ -85,3 +88,4 @@ def test_explicit_keyboard_edits_still_work(app):
     QTest.keyClick(dialog.theme, Qt.Key.Key_Down)
     assert dialog.theme.currentIndex() == 1
     dialog.reject()
+    panel.reject()

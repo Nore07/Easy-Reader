@@ -2,6 +2,15 @@
 from PySide6.QtCore import QLibraryInfo, QLocale, QTranslator
 
 EN = {
+    "排版": "Layout",
+    "EPUB 插图超过 8 MiB，无法安全读取。": "An EPUB illustration exceeds 8 MiB.",
+    "EPUB 插图尺寸过大或格式不受支持。": "An EPUB illustration is oversized or unsupported.",
+    "EPUB 插图损坏或格式不受支持。": "An EPUB illustration is damaged or unsupported.",
+    "EPUB 插图结构不受支持。": "The EPUB illustration structure is unsupported.",
+    "EPUB 插图数量超过当前支持范围。": "This EPUB exceeds the illustration count limit.",
+    "EPUB SVG 插图包含不支持的活动或外部内容。": "An SVG illustration contains unsupported active or external content.",
+    "阅读界面": "Reading layout",
+    "调整会立即预览当前书页；保存后生效，取消恢复原设置。": "Changes preview on your current page immediately. Save to keep them, or cancel to restore.",
     "启用全局显示 / 隐藏和紧急退出快捷键": "Enable global show / hide and emergency exit shortcuts",
     "显示 / 隐藏快捷键": "Show / hide shortcut", "紧急退出快捷键": "Emergency exit shortcut",
     "显示 / 隐藏：{message}": "Show / hide: {message}", "紧急退出：{message}": "Emergency exit: {message}",

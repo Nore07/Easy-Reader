@@ -151,6 +151,24 @@ def _zip_path(base: str, href: str) -> str:
     return joined
 
 
+def _safe_vector(payload):
+    probe = payload.lstrip()
+    if not probe.startswith((b"<", b"\xef\xbb\xbf", b"\xff\xfe", b"\xfe\xff", b"\x00\x00\xfe\xff")):
+        return False
+    vector = ET.fromstring(payload)
+    if _tag(vector) != "svg":
+        raise ImportError("EPUB 插图损坏或格式不受支持。")
+    for part in vector.iter():
+        if _tag(part) in ("script", "foreignObject", "image", "animate", "set", "animateTransform"):
+            raise ImportError("EPUB SVG 插图包含不支持的活动或外部内容。")
+        for key, value in list(part.attrib.items()) + [("style", part.text or "")]:
+            if key.rsplit("}", 1)[-1] == "href" and not value.startswith("#"):
+                raise ImportError("EPUB SVG 插图包含不支持的活动或外部内容。")
+            if "@import" in value.lower() or any(not ref.strip().strip("'\"").startswith("#") for ref in re.findall(r"url\((.*?)\)", value, re.I)):
+                raise ImportError("EPUB SVG 插图包含不支持的活动或外部内容。")
+    return True
+
+
 def _load_epub(path: Path) -> tuple[str, str, list[Section]]:
     try:
         with zipfile.ZipFile(path) as archive:
@@ -192,6 +210,8 @@ def _load_epub(path: Path) -> tuple[str, str, list[Section]]:
                             if content is not None and label is not None:
                                 labels.setdefault(_zip_path(posixpath.dirname(nav_path), content.get("src", "")), "".join(label.itertext()).strip())
             sections = []
+            image_cache = {}
+            image_count = 0
             for ref in (e for e in opf.iter() if _tag(e) == "itemref" and e.get("linear", "yes") != "no"):
                 item = manifest[ref.attrib["idref"]]
                 if item.get("media-type") not in ("application/xhtml+xml", "text/html"):
@@ -202,13 +222,63 @@ def _load_epub(path: Path) -> tuple[str, str, list[Section]]:
                 # Strip XML namespaces before the text-only HTML parser sees tags.
                 for node in element.iter():
                     node.tag = _tag(node)
+                pictures = []
+                for node in element.iter():
+                    source = None
+                    if node.tag == "img":
+                        source = node.get("src")
+                    elif node.tag == "svg":
+                        embedded = next((child for child in node.iter() if child.tag == "image"), None)
+                        if embedded is not None:
+                            source = embedded.get("href") or embedded.get("{http://www.w3.org/1999/xlink}href")
+                    if source:
+                        image_path = _zip_path(posixpath.dirname(item_path), source)
+                        image_count += 1
+                        if image_count > 512:
+                            raise ImportError("EPUB 插图数量超过当前支持范围。")
+                        payload = image_cache.get(image_path)
+                        if payload is None:
+                            payload = archive.read(image_path)
+                            image_cache[image_path] = payload
+                        if len(payload) > 8 * 1024 * 1024:
+                            raise ImportError("EPUB 插图超过 8 MiB，无法安全读取。")
+                        from PySide6.QtCore import QByteArray, QBuffer, QIODevice, Qt
+                        from PySide6.QtGui import QImageReader
+                        safe_vector = _safe_vector(payload)
+                        buffer = QBuffer()
+                        buffer.setData(QByteArray(payload))
+                        buffer.open(QIODevice.OpenModeFlag.ReadOnly)
+                        decoder = QImageReader(buffer)
+                        if bytes(decoder.format()).lower() in (b"svg", b"svgz") and not safe_vector:
+                            raise ImportError("EPUB 插图损坏或格式不受支持。")
+                        size = decoder.size()
+                        pixels = size.width() * size.height()
+                        if not size.isValid() or pixels > 16000000:
+                            raise ImportError("EPUB 插图尺寸过大或格式不受支持。")
+                        decoder.setScaledSize(size.scaled(2000, 2000, Qt.AspectRatioMode.KeepAspectRatio))
+                        if decoder.read().isNull():
+                            raise ImportError("EPUB 插图损坏或格式不受支持。")
+                        pictures.append(payload)
+                        tail = node.tail
+                        node.clear()
+                        node.tag = "div"
+                        node.text, node.tail = "\ufffc", tail
                 parser = TextExtractor()
                 parser.feed(ET.tostring(element, encoding="unicode"))
                 text = re.sub(r"[ \t]+", " ", "".join(parser.parts))
                 text = re.sub(r"\n\s*\n+", "\n", text).strip()
                 if text:
                     chapter_title = labels.get(item_path) or "".join(parser.heading).strip() or f"章节 {len(sections) + 1}"
-                    sections.extend(split_section("epub:" + item_path, chapter_title[:160], text))
+                    positions = [i for i, char in enumerate(text) if char == "\ufffc"]
+                    if len(positions) != len(pictures):
+                        raise ImportError("EPUB 插图结构不受支持。")
+                    images = dict(zip(positions, pictures))
+                    chunks = split_section("epub:" + item_path, chapter_title[:160], text)
+                    start = 0
+                    for chunk in chunks:
+                        chunk.images = {offset - start: data for offset, data in images.items() if start <= offset < start + len(chunk.text)}
+                        start += len(chunk.text)
+                    sections.extend(chunks)
             if not sections:
                 raise ImportError("EPUB 中没有可阅读的文字章节。")
             return title[:300], author[:300], sections

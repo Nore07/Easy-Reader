@@ -1,9 +1,10 @@
 from bisect import bisect_right
+import math
 
-from PySide6.QtCore import QPointF, QRectF, QSizeF, Qt, Signal
+from PySide6.QtCore import QByteArray, QBuffer, QIODevice, QPointF, QRectF, QSizeF, Qt, Signal, QUrl
 from PySide6.QtGui import (
     QAbstractTextDocumentLayout, QColor, QFont, QGuiApplication, QKeySequence,
-    QPainter, QPalette, QTextBlockFormat, QTextCharFormat, QTextCursor, QTextDocument,
+    QPainter, QPalette, QTextBlockFormat, QTextCharFormat, QTextCursor, QTextDocument, QTextImageFormat, QImageReader,
 )
 from PySide6.QtWidgets import QMenu, QWidget
 
@@ -33,6 +34,8 @@ class PageView(QWidget):
         self.settings = Settings()
         self.focus_mode = False
         self.text = ""
+        self.images = {}
+        self.image_sizes = {}
         self.offset = 0
         self.page = 0
         self.page_count = 1
@@ -45,10 +48,35 @@ class PageView(QWidget):
         self.setMinimumSize(160, 140)
         self.setMouseTracking(True)
 
-    def set_text(self, text: str, offset=0):
+    def set_text(self, text: str, offset=0, images=None):
         self.text = text
         self.offset = max(0, min(len(text), offset))
+        previous = self.document
+        self.document = QTextDocument(self)
+        previous.deleteLater()
         self.document.setPlainText(text)
+        self.images = {}
+        self.image_sizes = {}
+        for position, payload in (images or {}).items():
+            data = QBuffer(self)
+            data.setData(QByteArray(payload))
+            data.open(QIODevice.OpenModeFlag.ReadOnly)
+            reader = QImageReader(data)
+            size = reader.size()
+            if not size.isValid() or size.width() * size.height() > 32000000:
+                data.deleteLater()
+                raise ValueError("Unsupported or oversized EPUB illustration")
+            reader.setAutoTransform(True)
+            budget_edge = int(math.sqrt(16000000 / max(1, len(images or {}))))
+            edge = min(2000, max(64, budget_edge))
+            reader.setScaledSize(size.scaled(edge, edge, Qt.AspectRatioMode.KeepAspectRatio))
+            image = reader.read()
+            data.deleteLater()
+            if image.isNull():
+                raise ValueError("Cannot decode EPUB illustration")
+            name = QUrl(f"quietreader-image:{position}")
+            self.document.addResource(QTextDocument.ResourceType.ImageResource, name, image)
+            self.images[position] = (name, image.size())
         self.selection = QTextCursor(self.document)
         self.reflow()
 
@@ -72,6 +100,21 @@ class PageView(QWidget):
         block.setBottomMargin(self.settings.paragraph_spacing)
         cursor.mergeBlockFormat(block)
         self.document.setPageSize(QSizeF(width, self.page_height))
+        for position, (name, size) in self.images.items():
+            scaled = QSizeF(size).scaled(QSizeF(width, max(20, self.page_height - self.settings.font_size * 2)), Qt.AspectRatioMode.KeepAspectRatio)
+            fmt = QTextImageFormat()
+            fmt.setName(name.toString())
+            fmt.setWidth(scaled.width())
+            fmt.setHeight(scaled.height())
+            cursor = QTextCursor(self.document)
+            cursor.setPosition(qt_offset(self.text, position))
+            cursor.movePosition(QTextCursor.MoveOperation.NextCharacter, QTextCursor.MoveMode.KeepAnchor)
+            cursor.insertImage(fmt)
+            image_block = QTextBlockFormat()
+            image_block.setLineHeight(100, QTextBlockFormat.LineHeightTypes.ProportionalHeight.value)
+            image_block.setAlignment(Qt.AlignmentFlag.AlignHCenter)
+            cursor.mergeBlockFormat(image_block)
+            self.image_sizes[position] = scaled
         self.page_count = max(1, self.document.pageCount())
         offsets = [None] * self.page_count
         offsets[0] = 0
@@ -86,7 +129,11 @@ class PageView(QWidget):
                 if offsets[page] is None:
                     offsets[page] = python_offset(self.text, current.position() + line.textStart())
             current = current.next()
-        self.page_offsets = [value if value is not None else len(self.text) for value in offsets]
+        # Qt can count a final margin-only page after a full-height illustration.
+        while len(offsets) > 1 and offsets[-1] is None:
+            offsets.pop()
+        self.page_count = len(offsets)
+        self.page_offsets = [value if value is not None else python_offset(self.text, max(0, layout.hitTest(QPointF(0, page * self.page_height + 1), Qt.HitTestAccuracy.FuzzyHit))) for page, value in enumerate(offsets)]
         self.page = min(self.page_count - 1, max(0, bisect_right(self.page_offsets, self.offset) - 1))
         self.update()
         self.reflowed.emit()
