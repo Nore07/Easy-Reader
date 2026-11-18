@@ -121,7 +121,7 @@ class PageView(QWidget):
             image_block.setAlignment(Qt.AlignmentFlag.AlignHCenter)
             cursor.mergeBlockFormat(image_block)
             self.image_sizes[position] = scaled
-        c = colors(self.settings.theme, self.settings.background_color if self.settings.floating else "")
+        c = colors(self.settings.theme, self.settings.background_color if self.focus_mode else "")
         if self.settings.text_color:
             c["ink"] = self.settings.text_color
         heading_scale = {"1": 1.8, "2": 1.55, "3": 1.35, "4": 1.2, "5": 1.1, "6": 1.0}
@@ -219,7 +219,7 @@ class PageView(QWidget):
     def paintEvent(self, event):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.TextAntialiasing)
-        c = colors(self.settings.theme, self.settings.background_color if self.settings.floating else "")
+        c = colors(self.settings.theme, self.settings.background_color if self.focus_mode else "")
         if self.settings.text_color:
             c["ink"] = self.settings.text_color
         painter.setPen(QColor(c["ink"]))

@@ -20,11 +20,11 @@ def colors(theme, background_color=""):
     return {"paper": "#f5f3eb" if theme != "sepia" else "#eee2c9", "ink": "#283c33", "muted": "#68796c", "side": "#e8ebdf", "line": "#d8ded0", "accent": "#315743", "button": "#dfe6d7", "selected": "#cfdeca"}
 
 
-def stylesheet(palette, alpha=255):
+def stylesheet(palette, alpha=255, borderless=False):
     c = palette
     paper = c["paper"].lstrip("#")
     rgb = ",".join(str(int(paper[i:i+2], 16)) for i in (0, 2, 4))
-    surface_frame = f"border: 1px solid {c['line']}; border-radius: 9px;" if alpha else "border: none; border-radius: 0;"
+    surface_frame = f"border: 1px solid {c['line']}; border-radius: 9px;" if alpha and not borderless else "border: none; border-radius: 0;"
     return f"""
     QWidget {{ color: {c['ink']}; font-family: 'Microsoft YaHei'; font-size: 13px; }}
     QMainWindow {{ background: transparent; }}

@@ -15,7 +15,7 @@ import zipfile
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--transparent", action="store_true", help="Verify startup with a fully transparent floating window")
+    parser.add_argument("--transparent", action="store_true", help="Verify fully transparent Focus mode in the packaged app")
     parser.add_argument("--exe", type=Path, help="Executable to verify; defaults to the latest successful build")
     parser.add_argument("--focus", action="store_true", help="Verify English preferences and keyboard focus entry/exit in the executable")
     parser.add_argument("--emergency", action="store_true", help="Verify global hide/show, emergency process exit and restart")
@@ -85,7 +85,7 @@ def main():
         data.mkdir()
         settings = {"close_to_tray": False}
         if args.transparent:
-            settings.update(floating=True, opacity=0, background_color="#111111")
+            settings.update(opacity=0, background_color="#111111")
         if args.focus:
             settings.update(language="en", text_color="#123456", next_key="J", previous_key="K", focus_key="F8")
         if args.navigation:
@@ -161,6 +161,27 @@ def main():
                 post_key(ord("J"))
                 time.sleep(0.1)
                 post_key(0x1B)  # Escape
+                wait_caption(True)
+            if args.transparent:
+                def post_key(virtual_key):
+                    user32.PostMessageW(windows[0], 0x0100, virtual_key, 1)
+                    user32.PostMessageW(windows[0], 0x0101, virtual_key, 0xC0000001)
+
+                def wait_caption(expected):
+                    end = time.monotonic() + 5
+                    while time.monotonic() < end:
+                        windows.clear()
+                        user32.EnumWindows(collect, 0)
+                        if windows and bool(user32.GetWindowLongW(windows[0], -16) & 0x00C00000) == expected:
+                            return
+                        time.sleep(0.05)
+                    raise AssertionError("Focus window style did not change as expected")
+
+                wait_caption(True)
+                post_key(0x79)  # F10 enters Focus mode
+                wait_caption(False)
+                # Qt's Windows backend may composite translucent windows without WS_EX_LAYERED.
+                post_key(0x1B)  # Escape exits Focus mode
                 wait_caption(True)
             emergency_seconds = None
             if args.emergency:

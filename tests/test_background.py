@@ -4,7 +4,7 @@ from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QDialog, QWidget
 
 from quietreader.desktop.color_picker import DesktopColorPicker, ScreenSample
-from quietreader.domain.models import Settings
+from quietreader.domain.models import Book, Section, Settings
 from quietreader.persistence.store import StateStore
 from quietreader.ui.settings import SettingsDialog
 from quietreader.ui.theme import colors
@@ -50,19 +50,24 @@ def test_picker_selection_and_cancel_restore_windows(app):
     main.close()
 
 
-def test_transparent_float_has_no_background_and_keeps_text(app, tmp_path):
+def test_focus_mode_uses_transparency_color_and_overlay_controls(app, tmp_path):
     window = MainWindow(StateStore(tmp_path), enable_system=False)
     window.show()
-    window.apply_settings(Settings(floating=True, opacity=0))
+    window._loaded(Book("test", "unused.txt", "Test", sections=[Section("one", "One", "Text " * 100)]))
+    window.apply_settings(Settings(opacity=0))
+    window.toggle_focus()
     app.processEvents()
     point = window.reader.mapTo(window, QPoint(1, 1))
     assert window.grab().toImage().pixelColor(point).alpha() == 0
     assert window.windowOpacity() == 1
-    assert window.drag_handle.isVisible()
-    window.apply_settings(Settings(floating=True, background_color="#111111", opacity=1))
+    assert window.focus_mode
+    assert not hasattr(window, "float_button")
+    window.apply_settings(Settings(background_color="#111111", opacity=1, always_on_top=True))
     point = window.reader.mapTo(window, QPoint(1, 1))
     assert window.grab().toImage().pixelColor(point).name() == "#111111"
+    assert window.windowFlags() & Qt.WindowType.WindowStaysOnTopHint
     assert colors("light", "#111111")["ink"] == "#f5f5f5"
+    window.toggle_focus()
     window.shutdown()
 
 

@@ -144,8 +144,9 @@ def test_book_info_shows_epub3_cover_and_retranslates_metadata(app, tmp_path):
 
     assert window.book_info.cover_image is not None
     assert "山间来信" in window.book_info.details.text()
+    assert window.reading_tabs.tabText(2) == "资料"
+    assert window.reading_tabs.isTabVisible(2)
     window.apply_settings(window.settings.__class__(language="en"))
     assert "Title: 山间来信" in window.book_info.details.text()
-    assert window.tabs.tabText(0) == "Reading"
-    assert window.reading_tabs.tabText(1) == "Bookmarks"
+    assert [window.reading_tabs.tabText(i) for i in range(3)] == ["Contents", "Bookmarks", "Book info"]
     window.shutdown()

@@ -109,3 +109,11 @@ GUI 测试仅使用脚本原创的临时文本及构造的 EPUB，不读取用�
 75 项 pytest 通过，覆盖上述格式、标题内嵌强调、实体/活动内容过滤、长章节跨分块格式范围、Qt 字符与段落格式、普通 TXT 默认样式及已有功能。`scripts/epub_formatting_smoke.py` 在真实 Windows 窗口检查排版并生成分页截图；`scripts/navigation_smoke.py`、`scripts/illustrations_smoke.py` 和 `scripts/epub_library_smoke.py` 同轮通过。最终独立包 `dist/epub-complete-release/QuietReader/QuietReader.exe` 的 `--formatted`、`--navigation`、`--library` 和 `--illustrated` 冒烟均通过，支持启动、导入、保存位置与干净退出。
 
 这是面向重排版阅读的基础语义子集，不应用原书 CSS 样式表，也不等同浏览器排版。固定版式、竖排、任意 CSS、复杂 MathML、嵌入脚本、媒体覆盖和在线资源仍不支持。验证使用自制 EPUB 样本；真实出版物兼容性仍需后续用用户挑选的书籍样本复核。
+
+## 2026-11-18：阅读导航、书架页面与专注模式整合
+
+阅读页签现在按目录、书签、资料、页码、位置排列；资料仅在打开书籍后显示。书架改为右侧主页面，由“阅读 / 书架”按钮切换。配置按钮和配置窗口统一使用“配置 / Configuration”；独立浮窗设置已移除，旧 `floating` 字段会被忽略。专注模式沿用背景色、桌面取色、0–100% 背景透明度与置顶设置，只留下书中文字。
+
+Qt 回归为 95 项通过。Windows 原生冒烟通过 `gui_smoke.py`、`focus_smoke.py`、`background_smoke.py`、`preferences_smoke.py`、`navigation_smoke.py` 和 `epub_library_smoke.py`。背景冒烟在全屏纯色底窗上比较专注窗口显示前后的桌面合成像素，避免仅凭控件截图误判透明效果。Windows onedir 包 `dist/reading-config-focus-final/QuietReader/QuietReader.exe` 构建成功；`packaged_smoke.py --transparent` 与 `--focus` 均通过。
+
+Qt 官方文档说明，`WA_TranslucentBackground` 在窗口显示后切换并非所有平台都可靠，因此该属性改为在创建原生窗口前初始化，普通模式使用不透明背景配色。现有 Windows 11 实机桌面合成已验证专注背景透明，且键盘退出后普通窗口恢复。

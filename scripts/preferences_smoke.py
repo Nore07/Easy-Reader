@@ -24,7 +24,7 @@ def main():
     output.mkdir(exist_ok=True)
     with tempfile.TemporaryDirectory(prefix="quietreader-preferences-") as temp:
         window = MainWindow(StateStore(Path(temp)), enable_system=False)
-        window.apply_settings(Settings(theme="dark", language="zh_CN", floating=True, opacity=0, background_color="#ffffff", text_color="#ffffff"))
+        window.apply_settings(Settings(theme="dark", language="zh_CN", opacity=0, background_color="#ffffff", text_color="#ffffff"))
         window.show()
         dialog = SettingsDialog(window.settings, window)
         dialog.show()

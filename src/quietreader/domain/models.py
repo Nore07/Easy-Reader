@@ -94,7 +94,6 @@ class Settings:
     text_color: str = ""
     language: str = "system"
     theme: str = "system"
-    floating: bool = False
     always_on_top: bool = False
     close_to_tray: bool = True
     global_hotkey: bool = False
@@ -121,7 +120,7 @@ class Settings:
                     setattr(result, key, convert(max(low, min(high, value))))
             except (ValueError, TypeError, OverflowError):
                 pass
-        for key in ["floating", "always_on_top", "close_to_tray", "global_hotkey"]:
+        for key in ["always_on_top", "close_to_tray", "global_hotkey"]:
             if type(raw.get(key)) is bool:
                 setattr(result, key, raw[key])
         if raw.get("theme") in ("system", "light", "dark", "sepia"):

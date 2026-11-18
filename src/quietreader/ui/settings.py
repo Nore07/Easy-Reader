@@ -83,14 +83,14 @@ class SettingsDialog(QDialog):
         color_row.addWidget(self.color_label)
         for label, callback in [("选择颜色", self.choose_background_color), ("桌面取色", self.picker.begin), ("跟随主题", self.reset_background_color)]:
             color_row.addWidget(self.button(label, callback))
-        self.row("浮窗背景色", color_row)
+        self.row("专注模式背景色", color_row)
         text_row = QHBoxLayout()
         text_row.addWidget(self.text_color_label)
         text_row.addWidget(self.button("选择颜色", self.choose_text_color))
         text_row.addWidget(self.button("自动文字颜色", self.reset_text_color))
         self.row("文字颜色", text_row)
         for key, label, low, high, step in [
-            ("opacity", "浮窗背景不透明度", 0.0, 1.0, 0.05),
+            ("opacity", "专注模式背景不透明度", 0.0, 1.0, 0.05),
         ]:
             field = QDoubleSpinBox() if isinstance(step, float) else QSpinBox()
             field.setRange(low, high)
@@ -98,8 +98,8 @@ class SettingsDialog(QDialog):
             field.setValue(getattr(settings, key))
             self.row(label, field)
             self.fields[key] = field
-        self.note("设为 0 即全透明，文字保持不透明；仅在浮窗生效。\n取色时窗口会暂时消失，单击选择，Esc / 右键取消。\n取色结果仅保存在本机；背景变化后可重新取色。")
-        for key, label in [("floating", "使用阅读浮窗"), ("always_on_top", "窗口始终置顶"), ("close_to_tray", "关闭窗口时隐藏至托盘"), ("global_hotkey", "启用全局显示 / 隐藏和紧急退出快捷键")]:
+        self.note("设为 0 即全透明，文字保持不透明；背景色、透明度和桌面取色仅在专注模式生效。\n取色时窗口会暂时消失，单击选择，Esc / 右键取消。\n取色结果仅保存在本机；背景变化后可重新取色。")
+        for key, label in [("always_on_top", "窗口始终置顶"), ("close_to_tray", "关闭窗口时隐藏至托盘"), ("global_hotkey", "启用全局显示 / 隐藏和紧急退出快捷键")]:
             field = QCheckBox()
             self.texts.append((field, label))
             field.setChecked(getattr(settings, key))
@@ -120,12 +120,12 @@ class SettingsDialog(QDialog):
             self.fields[key] = field
             self.row(label, field)
         self.hotkey = self.fields["hotkey"]
-        self.note("点击修改，然后按下一个按键或组合键。Esc 取消录入。\nEsc 固定退出专注模式；添加书籍、偏好和复制的快捷键保留。")
+        self.note("点击修改，然后按下一个按键或组合键。Esc 取消录入。\nEsc 固定退出专注模式；添加书籍、配置和复制的快捷键保留。")
         self.note("PageUp / PageDown 翻页，Ctrl+PageUp / Ctrl+PageDown 切换章节；两组按键都可以修改。")
         self.note("专注模式仅显示正文，F10（可修改）或 Esc 退出，也可从托盘或正文右键菜单退出。")
         self.note("同一按键切换隐藏和显示。启用全局快捷键后，窗口隐藏或失去焦点时也可使用。\n紧急退出直接关闭程序，不隐藏到托盘，也不等待后台导入；会尝试保存当前位置。")
         self.buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Save | QDialogButtonBox.StandardButton.Cancel | QDialogButtonBox.StandardButton.RestoreDefaults)
-        for role, source in [(QDialogButtonBox.StandardButton.Save, "保存偏好"), (QDialogButtonBox.StandardButton.Cancel, "取消"), (QDialogButtonBox.StandardButton.RestoreDefaults, "恢复默认")]:
+        for role, source in [(QDialogButtonBox.StandardButton.Save, "保存配置"), (QDialogButtonBox.StandardButton.Cancel, "取消"), (QDialogButtonBox.StandardButton.RestoreDefaults, "恢复默认")]:
             self.texts.append((self.buttons.button(role), source))
         self.buttons.accepted.connect(self.accept)
         self.buttons.rejected.connect(self.reject)
@@ -176,7 +176,7 @@ class SettingsDialog(QDialog):
 
     def retranslate(self, *args):
         install_qt_translator(QApplication.instance(), self.language.currentData())
-        self.setWindowTitle(self.t("阅读偏好 · QuietReader"))
+        self.setWindowTitle(self.t("阅读配置 · QuietReader"))
         for widget, source in self.texts:
             widget.setText(self.t(source))
         self.language.setItemText(0, self.t("跟随系统"))
@@ -231,7 +231,7 @@ class SettingsDialog(QDialog):
             self._update_color_label()
 
     def choose_background_color(self):
-        self.set_background_color(QColorDialog.getColor(QColor(self.background_color or "#f5f3eb"), self, self.t("选择浮窗背景色"), QColorDialog.ColorDialogOption.DontUseNativeDialog))
+        self.set_background_color(QColorDialog.getColor(QColor(self.background_color or "#f5f3eb"), self, self.t("选择专注模式背景色"), QColorDialog.ColorDialogOption.DontUseNativeDialog))
 
     def choose_text_color(self):
         self.set_text_color(QColorDialog.getColor(QColor(self.text_color or "#283c33"), self, self.t("选择文字颜色"), QColorDialog.ColorDialogOption.DontUseNativeDialog))

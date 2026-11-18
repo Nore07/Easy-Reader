@@ -21,9 +21,12 @@ def send_wheel(app, widget):
 @pytest.mark.parametrize("theme", ["dark", "light", "sepia"])
 def test_preferences_background_matches_theme_independently(app, tmp_path, theme):
     window = MainWindow(StateStore(tmp_path), enable_system=False)
-    window.apply_settings(Settings(theme=theme, floating=True, opacity=0, background_color="#ffffff", text_color="#ffffff"))
+    window.apply_settings(Settings(theme=theme, opacity=0, background_color="#ffffff", text_color="#ffffff"))
     window.show()
     dialog = SettingsDialog(window.settings, window)
+    assert dialog.windowTitle() == "阅读配置 · QuietReader"
+    assert all(source != "使用阅读浮窗" for _, source in dialog.texts)
+    assert window.config_button.text() == "配置"
     dialog.show()
     app.processEvents()
     scroll = dialog.findChild(QScrollArea)

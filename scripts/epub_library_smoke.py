@@ -35,8 +35,8 @@ def main():
 
         assert window.book_info.cover_image is not None
         assert "静读出版社" in window.book_info.details.text()
-        assert window.tabs.isTabVisible(2)
-        window.tabs.setCurrentIndex(2)
+        assert window.reading_tabs.isTabVisible(2)
+        window.reading_tabs.setCurrentIndex(2)
         app.processEvents()
         window.grab().save(str(output / "epub-book-info.png"))
 
@@ -46,7 +46,7 @@ def main():
         window.save_state()
         assert window.bookmarks.count() == 1
         assert "稍后复查这里" in window.bookmarks.item(0).text()
-        window.tabs.setCurrentIndex(0)
+        window.reading_tabs.setCurrentIndex(0)
         window.reading_tabs.setCurrentIndex(1)
         app.processEvents()
         window.grab().save(str(output / "epub-bookmarks.png"))

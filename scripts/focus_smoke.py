@@ -40,6 +40,7 @@ def main():
         window.load_path(book)
         loaded(app, window)
         dialog = SettingsDialog(replace(window.settings, language="en"), window)
+        dialog.fields["opacity"].setValue(0)
         dialog.show()
         dialog.set_text_color(QColor("#cc3366"))
         QTest.qWait(100)
@@ -53,7 +54,7 @@ def main():
         dialog.fields["previous_key"].set_sequence("Ctrl+K")
         dialog.fields["focus_key"].set_sequence("F8")
         dialog.language.setCurrentIndex(dialog.language.findData("zh_CN"))
-        assert dialog.windowTitle() == "阅读偏好 · QuietReader"
+        assert dialog.windowTitle() == "阅读配置 · QuietReader"
         assert dialog.fields["next_key"].sequence == "Ctrl+J"
         dialog.grab().save(str(output / "chinese-keybindings.png"))
         dialog.language.setCurrentIndex(dialog.language.findData("en"))
@@ -61,7 +62,8 @@ def main():
         window.apply_settings(dialog.values())
         window.reveal()
         QTest.qWait(100)
-        assert window.open_button.text() == "Open"
+        assert window.open_button.text() == "Add books"
+        assert window.config_button.text() == "Configuration"
         QTest.keyClick(window.reader, Qt.Key.Key_J, Qt.KeyboardModifier.ControlModifier)
         assert window.reader.page == 1
         anchor = window.reader.offset
@@ -70,7 +72,8 @@ def main():
         QTest.qWait(100)
         assert window.focus_mode and window.reader.hasFocus(), (window.focus_mode, window.reader.hasFocus(), app.activeWindow())
         assert window.reader.offset == anchor
-        assert all(not w.isVisible() for w in window.findChildren(QWidget) if w not in (window.surface, window.reader))
+        keep_visible = (window.surface, window.main_pages, window.reader_page, window.reader)
+        assert all(not w.isVisible() for w in window.findChildren(QWidget) if w not in keep_visible)
         point = window.reader.mapTo(window, QPoint(1, 1))
         assert window.grab().toImage().pixelColor(point).alpha() == 0
         window.grab().save(str(output / "focus-text-only.png"))

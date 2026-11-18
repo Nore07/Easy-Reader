@@ -76,8 +76,8 @@ def main():
         assert window.section_index == 0
         assert window.previous_chapter.isEnabled() is False
 
-        window.tabs.setCurrentIndex(0)
-        window.reading_tabs.setCurrentIndex(2)
+        window.reading_tabs.setCurrentIndex(0)
+        window.reading_tabs.setCurrentIndex(3)
         QTest.qWait(80)
         window.grab().save(str(output / "epub-page-list.png"))
         window.reading_tabs.setCurrentIndex(0)

@@ -7,7 +7,7 @@ from PySide6.QtCore import QObject, QPoint, QRunnable, QThreadPool, Qt, QTimer, 
 from PySide6.QtGui import QAction, QColor, QGuiApplication, QIcon, QKeySequence, QPainter, QPen, QPixmap, QPolygon, QShortcut
 from PySide6.QtWidgets import (
     QApplication, QComboBox, QDialog, QFileDialog, QHBoxLayout, QLabel, QInputDialog, QMessageBox,
-    QListWidget, QListWidgetItem, QMainWindow, QMenu, QPushButton,
+    QListWidget, QListWidgetItem, QMainWindow, QMenu, QPushButton, QStackedWidget,
     QSizeGrip, QSlider, QSystemTrayIcon, QTabWidget, QVBoxLayout, QWidget,
 )
 
@@ -74,17 +74,12 @@ class DragHeader(QWidget):
             super().mousePressEvent(event)
 
 
-class DragHandle(QPushButton):
-    def mousePressEvent(self, event):
-        if event.button() == Qt.MouseButton.LeftButton and self.window().windowHandle():
-            self.window().windowHandle().startSystemMove()
-        else:
-            super().mousePressEvent(event)
-
-
 class MainWindow(QMainWindow):
     def __init__(self, store, enable_system=True):
         super().__init__()
+        # Configure Qt's translucent backing store before the native HWND is
+        # created; changing WA_TranslucentBackground after show is not reliable.
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
         self.store = store
         self.shelf_manager = ShelfManager(store.path.parent)
         self.settings = Settings.from_dict(store.state["settings"])
@@ -98,8 +93,6 @@ class MainWindow(QMainWindow):
         self.focus_mode = False
         self._chrome_visibility = {}
         self.status_source = ("离线优先。添加书籍即可开始阅读。", {})
-        self.sidebar_requested = True
-        self.sidebar_manual = False
         self.tray = None
         self.hotkey = None
         self.emergency_hotkey = None
@@ -160,29 +153,21 @@ class MainWindow(QMainWindow):
         self.eyebrow.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
         top.addWidget(self.eyebrow)
         top.addStretch()
-        self.drag_handle = DragHandle("⠿")
-        self.drag_handle.setToolTip("按住拖动浮窗（全透明时也可使用）")
-        self.drag_handle.setAccessibleName("拖动浮窗")
-        self.drag_handle.setFixedWidth(32)
-        top.addWidget(self.drag_handle)
         self.open_button = self._button("添加书籍", self.choose_file)
         self.open_button.setObjectName("primary")
         self.open_button.setToolTip("添加本地 TXT / EPUB 到书架 · Ctrl+O")
         top.addWidget(self.open_button)
         top.addWidget(self._button("排版", self.show_layout_panel))
-        top.addWidget(self._button("偏好", self.show_settings))
+        self.config_button = self._button("配置", self.show_settings)
+        top.addWidget(self.config_button)
         top.addWidget(self._button("隐藏", self.hide_or_minimize))
-        self.close_button = self._button("×", self.close)
-        self.close_button.setToolTip("关闭窗口（可在偏好中设置隐藏至托盘或退出）")
-        self.close_button.setAccessibleName("关闭窗口")
-        top.addWidget(self.close_button)
         root.addWidget(header)
         tools_widget = QWidget()
         tools = QHBoxLayout(tools_widget)
         tools.setContentsMargins(0, 0, 0, 0)
-        tools.addWidget(self._button("阅读 / 书架", self.toggle_sidebar))
-        self.float_button = self._button("浮窗", self.toggle_floating, True)
-        tools.addWidget(self.float_button)
+        self.view_toggle_button = self._button("阅读 / 书架", self.toggle_main_page)
+        self.view_toggle_button.setToolTip("切换阅读与书架页面")
+        tools.addWidget(self.view_toggle_button)
         self.pin_button = self._button("置顶", self.toggle_pin, True)
         tools.addWidget(self.pin_button)
         self.encoding_button = self._button("编码", self.toggle_encoding)
@@ -205,10 +190,6 @@ class MainWindow(QMainWindow):
         side = QVBoxLayout(self.sidebar)
         side.setContentsMargins(10, 12, 10, 12)
         side.addWidget(self._label("我的阅读", "eyebrow"))
-        tabs = self.tabs = QTabWidget()
-        reading_module = QWidget()
-        reading_module_layout = QVBoxLayout(reading_module)
-        reading_module_layout.setContentsMargins(0, 0, 0, 0)
         self.reading_tabs = QTabWidget()
         self.chapters = QListWidget()
         self.chapters.setAccessibleName("书籍目录")
@@ -231,6 +212,8 @@ class MainWindow(QMainWindow):
         bookmark_actions.addWidget(self.bookmark_remove_button)
         bookmark_layout.addLayout(bookmark_actions)
         self.reading_tabs.addTab(bookmark_panel, "书签")
+        self.book_info = BookInfoPanel()
+        self.reading_tabs.addTab(self.book_info, "资料")
         self.pages = QListWidget()
         self.pages.setAccessibleName("书中页码")
         self.pages.itemActivated.connect(self._page_activated)
@@ -243,23 +226,13 @@ class MainWindow(QMainWindow):
         self.reading_tabs.addTab(self.landmarks, "位置")
         self.reading_tabs.setTabVisible(2, False)
         self.reading_tabs.setTabVisible(3, False)
-        reading_module_layout.addWidget(self.reading_tabs)
-        tabs.addTab(reading_module, "阅读")
-        self.shelf = ShelfPanel()
-        self.shelf.open_requested.connect(self.open_shelf_book)
-        self.shelf.move_requested.connect(self.move_shelf_book)
-        self.shelf.remove_requested.connect(self._confirm_remove_shelf_book)
-        self.shelf.create_category_requested.connect(self.prompt_create_shelf_category)
-        self.shelf.delete_category_requested.connect(self._confirm_delete_shelf_category)
-        tabs.addTab(self.shelf, "书架")
-        self.recent = self.shelf.recent
-        self.book_info = BookInfoPanel()
-        tabs.addTab(self.book_info, "资料")
-        tabs.setTabVisible(2, False)
-        side.addWidget(tabs)
+        self.reading_tabs.setTabVisible(4, False)
+        side.addWidget(self.reading_tabs)
         side.addWidget(self._label("本地阅读 · 无需联网", "status"))
         body.addWidget(self.sidebar)
-        reading = self.reading_layout = QVBoxLayout()
+        self.main_pages = QStackedWidget()
+        self.reader_page = QWidget()
+        reading = self.reading_layout = QVBoxLayout(self.reader_page)
         reading.setSpacing(4)
         self.book_title = self._label("一本书，一处安静", "bookTitle")
         self.book_title.setWordWrap(True)
@@ -301,7 +274,16 @@ class MainWindow(QMainWindow):
         navigation.addWidget(self.next)
         navigation.addWidget(self.next_chapter)
         reading.addWidget(navigation_widget)
-        body.addLayout(reading, 1)
+        self.main_pages.addWidget(self.reader_page)
+        self.shelf = ShelfPanel()
+        self.shelf.open_requested.connect(self.open_shelf_book)
+        self.shelf.move_requested.connect(self.move_shelf_book)
+        self.shelf.remove_requested.connect(self._confirm_remove_shelf_book)
+        self.shelf.create_category_requested.connect(self.prompt_create_shelf_category)
+        self.shelf.delete_category_requested.connect(self._confirm_delete_shelf_category)
+        self.main_pages.addWidget(self.shelf)
+        self.recent = self.shelf.recent
+        body.addWidget(self.main_pages, 1)
         root.addLayout(body, 1)
         bottom_widget = QWidget()
         bottom = QHBoxLayout(bottom_widget)
@@ -351,7 +333,7 @@ class MainWindow(QMainWindow):
             self.tray = QSystemTrayIcon(self.windowIcon(), self)
             self.tray.setToolTip("QuietReader · 静读")
             menu = QMenu(self)
-            for label, callback in [("显示 / 隐藏", self.toggle_visible), ("添加书籍…", self.choose_file), ("阅读偏好…", self.show_settings)]:
+            for label, callback in [("显示 / 隐藏", self.toggle_visible), ("添加书籍…", self.choose_file), ("配置…", self.show_settings)]:
                 action = QAction(label, self)
                 action.setProperty("translation_source", label)
                 action.triggered.connect(callback)
@@ -459,6 +441,7 @@ class MainWindow(QMainWindow):
     def open_shelf_book(self, book_id):
         record = next((item for item in self.store.state["books"] if item["id"] == book_id), None)
         if record:
+            self.main_pages.setCurrentWidget(self.reader_page)
             encoding = record.get("encoding", "auto")
             self.load_path(record["path"], encoding if encoding in ENCODINGS else "auto")
 
@@ -636,6 +619,7 @@ class MainWindow(QMainWindow):
         self.page_label.setProperty("translation_source", None)
         self.reading_tabs.setTabVisible(2, False)
         self.reading_tabs.setTabVisible(3, False)
+        self.reading_tabs.setTabVisible(4, False)
         self.encoding_button.hide()
         self.encoding_bar.hide()
         self._update_progress()
@@ -672,11 +656,12 @@ class MainWindow(QMainWindow):
         if self.closed:
             return
         self.book = book
+        self.main_pages.setCurrentWidget(self.reader_page)
         self.setWindowTitle(f"{book.title} · QuietReader")
         self.book_title.setText(book.title)
         self.book_title.setProperty("translation_source", None)
         self.book_info.set_book(book, self.settings.language)
-        self.tabs.setTabVisible(2, True)
+        self.reading_tabs.setTabVisible(2, True)
         self._refresh_bookmarks()
         self.chapters.clear()
         self.pages.clear()
@@ -701,9 +686,8 @@ class MainWindow(QMainWindow):
                 item = QListWidgetItem(entry.label)
                 item.setData(Qt.ItemDataRole.UserRole, target)
                 self.landmarks.addItem(item)
-        self.reading_tabs.setTabVisible(2, self.pages.count() > 0)
-        self.reading_tabs.setTabVisible(3, self.landmarks.count() > 0)
-        self.tabs.setCurrentIndex(0)
+        self.reading_tabs.setTabVisible(3, self.pages.count() > 0)
+        self.reading_tabs.setTabVisible(4, self.landmarks.count() > 0)
         self.reading_tabs.setCurrentIndex(0)
         raw = self.store.state["positions"].get(book.id, {})
         index, offset = restore_position(book.sections, Position(raw.get("section_id", ""), raw.get("offset", 0)))
@@ -934,7 +918,6 @@ class MainWindow(QMainWindow):
         records.insert(0, record)
         self._refresh_bookmarks()
         self.bookmarks.setCurrentRow(0)
-        self.tabs.setCurrentIndex(0)
         self.reading_tabs.setCurrentIndex(1)
         self.set_status("书签已添加。")
         self.schedule_save()
@@ -990,19 +973,14 @@ class MainWindow(QMainWindow):
     def _refresh_recent(self):
         self._refresh_shelf()
 
-    def toggle_sidebar(self):
-        self.sidebar_manual = True
-        self.sidebar_requested = not self.sidebar.isVisible()
-        self.sidebar.setVisible(not self.sidebar.isVisible())
+    def toggle_main_page(self):
+        if self.focus_mode:
+            return
+        next_page = self.shelf if self.main_pages.currentWidget() is self.reader_page else self.reader_page
+        self.main_pages.setCurrentWidget(next_page)
 
     def toggle_encoding(self):
         self.encoding_bar.setVisible(not self.encoding_bar.isVisible())
-
-    def toggle_floating(self, checked):
-        self.sidebar_manual = False
-        values = self.settings.to_dict()
-        values["floating"] = checked
-        self.apply_settings(Settings.from_dict(values))
 
     def toggle_pin(self, checked):
         values = self.settings.to_dict()
@@ -1014,6 +992,7 @@ class MainWindow(QMainWindow):
             return
         entering = not self.focus_mode
         if entering:
+            self.main_pages.setCurrentWidget(self.reader_page)
             self._pre_focus_geometry = self.geometry()
             self._pre_focus_maximized = self.isMaximized()
             self._chrome_visibility = {widget: not widget.isHidden() for widget in self.chrome_widgets}
@@ -1079,10 +1058,9 @@ class MainWindow(QMainWindow):
                     if original:
                         getattr(widget, setter)(self.t(original))
         self.open_button.setText(self.t("添加书籍"))
-        self.tabs.setTabText(0, self.t("阅读"))
-        self.tabs.setTabText(1, self.t("书架"))
-        self.tabs.setTabText(2, self.t("资料"))
-        for index, source in enumerate(("目录", "书签", "页码", "位置")):
+        self.config_button.setText(self.t("配置"))
+        self.view_toggle_button.setText(self.t("阅读 / 书架"))
+        for index, source in enumerate(("目录", "书签", "资料", "页码", "位置")):
             self.reading_tabs.setTabText(index, self.t(source))
         self.shelf.retranslate(self.settings.language)
         self.book_info.set_book(self.book, self.settings.language)
@@ -1099,33 +1077,28 @@ class MainWindow(QMainWindow):
         self.set_status(self.status_source[0], **self.status_source[1])
 
     def _apply_window_style(self):
-        floating = self.settings.floating or self.focus_mode
-        alpha = 0 if self.focus_mode else round(self.settings.opacity * 255) if floating else 255
-        self.setStyleSheet(stylesheet(colors(self.settings.theme, self.settings.background_color if floating else ""), alpha))
+        alpha = round(self.settings.opacity * 255) if self.focus_mode else 255
+        background_color = self.settings.background_color if self.focus_mode else ""
+        self.setStyleSheet(stylesheet(colors(self.settings.theme, background_color), alpha, borderless=self.focus_mode))
 
     def apply_settings(self, settings):
         self.settings = Settings.from_dict(settings.to_dict())
         settings = self.settings
-        floating = settings.floating or self.focus_mode
         was_visible = self.isVisible()
         bounds = self.geometry()
-        flags = Qt.WindowType.Tool | Qt.WindowType.FramelessWindowHint if floating else Qt.WindowType.Window
-        if floating:
+        flags = Qt.WindowType.Tool | Qt.WindowType.FramelessWindowHint if self.focus_mode else Qt.WindowType.Window
+        if self.focus_mode:
             flags |= Qt.WindowType.NoDropShadowWindowHint
         if settings.always_on_top:
             flags |= Qt.WindowType.WindowStaysOnTopHint
-        mask = Qt.WindowType.WindowType_Mask | Qt.WindowType.FramelessWindowHint | Qt.WindowType.WindowStaysOnTopHint | Qt.WindowType.NoDropShadowWindowHint
+        mask = Qt.WindowType.WindowType_Mask | Qt.WindowType.Tool | Qt.WindowType.FramelessWindowHint | Qt.WindowType.WindowStaysOnTopHint | Qt.WindowType.NoDropShadowWindowHint
         if self.windowFlags() & mask != flags & mask:
             self.setWindowFlags(flags)
-        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, floating)
         self.setGeometry(bounds)
         self._apply_window_style()
-        self.float_button.setChecked(settings.floating)
         self.pin_button.setChecked(settings.always_on_top)
-        self.close_button.setVisible(settings.floating)
-        self.drag_handle.setVisible(settings.floating)
-        self.reader.apply_settings(replace(settings, floating=floating))
-        self.sidebar.setVisible(self.sidebar_requested and not self.focus_mode and (self.sidebar_manual or not floating and self.width() >= 700))
+        self.reader.apply_settings(settings)
+        self.sidebar.setVisible(not self.focus_mode and self.width() >= 700)
         self.brand.setVisible(self.width() >= 700 and not self.focus_mode)
         self.eyebrow.setVisible(self.width() >= 700 and not self.focus_mode)
         self.focus_button.setChecked(self.focus_mode)
@@ -1259,7 +1232,7 @@ class MainWindow(QMainWindow):
         if hasattr(self, "save_timer"):
             self.schedule_save()
         if hasattr(self, "sidebar"):
-            self.sidebar.setVisible(self.sidebar_requested and not self.focus_mode and (self.sidebar_manual or not self.settings.floating and self.width() >= 700))
+            self.sidebar.setVisible(not self.focus_mode and self.width() >= 700)
             self.eyebrow.setVisible(self.width() >= 700 and not self.focus_mode)
             self.brand.setVisible(self.width() >= 700 and not self.focus_mode)
             self._sync_chapter_button_labels()
@@ -1270,7 +1243,7 @@ class MainWindow(QMainWindow):
             self.schedule_save()
 
     def mousePressEvent(self, event):
-        if (self.settings.floating or self.focus_mode) and event.button() == Qt.MouseButton.LeftButton:
+        if self.focus_mode and event.button() == Qt.MouseButton.LeftButton:
             x, y = event.position().x(), event.position().y()
             edges = Qt.Edge(0)
             if x < 8:

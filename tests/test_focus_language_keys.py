@@ -2,7 +2,7 @@ import ctypes
 from types import SimpleNamespace
 
 import pytest
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QPoint, Qt
 from PySide6.QtGui import QColor, QImage
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QWidget
@@ -73,6 +73,7 @@ def test_focus_only_text_escape_and_language_preserve_position(app, tmp_path):
     window._loaded(book)
     window.apply_settings(Settings(language="en", text_color="#ff3355", next_key="J", previous_key="K"))
     assert window.open_button.text() == "Add books"
+    assert window.config_button.text() == "Configuration"
     assert window.book_title.text() == "原书标题"
     QTest.keyClick(window.reader, Qt.Key.Key_J)
     assert window.reader.page == 1
@@ -82,7 +83,8 @@ def test_focus_only_text_escape_and_language_preserve_position(app, tmp_path):
     assert window.focus_mode
     assert window.reader.hasFocus()
     assert all(w.isHidden() for w in window.chrome_widgets)
-    assert all(not w.isVisible() for w in window.findChildren(QWidget) if w not in (window.surface, window.reader))
+    keep_visible = (window.surface, window.main_pages, window.reader_page, window.reader)
+    assert all(not w.isVisible() for w in window.findChildren(QWidget) if w not in keep_visible)
     assert not window.book_title.isVisible()
     assert window.reader.offset == anchor
     rendered = window.grab().toImage().convertToFormat(QImage.Format.Format_RGBA8888)
@@ -92,32 +94,44 @@ def test_focus_only_text_escape_and_language_preserve_position(app, tmp_path):
     assert not window.focus_mode
     assert window.open_button.isVisible()
     assert window.brand.isVisible()
-    assert not window.settings.floating
+    assert window.testAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+    point = window.reader.mapTo(window, QPoint(1, 1))
+    assert window.grab().toImage().pixelColor(point).alpha() == 255
     assert window.reader.offset == anchor
     window.apply_settings(Settings(language="zh_CN"))
     assert window.open_button.text() == "添加书籍"
+    assert window.config_button.text() == "配置"
     assert window.reader.offset == anchor
     window.shutdown()
 
 
-def test_focus_restores_floating_preferences_and_does_not_start_focused(app, tmp_path):
+def test_focus_uses_overlay_preferences_and_ignores_legacy_floating_flag(app, tmp_path):
     window = MainWindow(StateStore(tmp_path), enable_system=False)
     window.show()
     window._loaded(Book("one", "none.txt", "Test", sections=[Section("one", "One", "Text " * 1000)]))
-    settings = Settings(floating=True, opacity=0.25, text_color="#123456", language="en")
+    settings = Settings.from_dict({"floating": True, "opacity": 0.25, "background_color": "#234567", "text_color": "#123456", "language": "en", "always_on_top": True})
+    assert not hasattr(settings, "floating")
+    assert "floating" not in settings.to_dict()
     window.apply_settings(settings)
-    window.toggle_sidebar()
     assert window.sidebar.isVisible()
+    assert window.testAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+    assert not window.windowFlags() & Qt.WindowType.FramelessWindowHint
     window.toggle_focus()
+    assert window.testAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+    assert window.windowFlags() & Qt.WindowType.FramelessWindowHint
+    assert window.windowFlags() & Qt.WindowType.WindowStaysOnTopHint
+    assert window.windowOpacity() == 1
     window.save_state()
     assert window.store.state["settings"]["opacity"] == 0.25
+    assert "floating" not in window.store.state["settings"]
     window.toggle_focus()
-    assert window.settings.floating
     assert window.sidebar.isVisible()
+    assert window.testAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
     window.shutdown()
     again = MainWindow(StateStore(tmp_path), enable_system=False)
     assert not again.focus_mode
     assert again.settings.opacity == 0.25
+    assert not hasattr(again.settings, "floating")
     again.shutdown()
 
 
@@ -145,8 +159,10 @@ def test_focus_suppresses_native_window_border_and_restores_it(app, tmp_path, mo
 
 def test_transparent_reader_surface_has_no_inner_frame():
     transparent = stylesheet(colors("dark"), 0)
+    translucent_focus = stylesheet(colors("dark"), 235, borderless=True)
 
     assert "QWidget#surface { background: rgba(32,43,40,0); border: none; border-radius: 0; }" in transparent
+    assert "QWidget#surface { background: rgba(32,43,40,235); border: none; border-radius: 0; }" in translucent_focus
 
 
 def test_native_border_helper_hides_and_restores_dwm_border(monkeypatch):
@@ -204,7 +220,7 @@ def test_recording_button_combination_and_focus_toggle_key(app, tmp_path):
 
 def test_settings_english_and_custom_text_color(app):
     dialog = SettingsDialog(Settings(language="en"))
-    assert dialog.windowTitle() == "Reading preferences · QuietReader"
+    assert dialog.windowTitle() == "Configuration · QuietReader"
     dialog.set_text_color(QColor("#112233"))
     assert dialog.values().text_color == "#112233"
     assert dialog.fields["next_key"].sequence == "PgDown"

@@ -25,7 +25,7 @@ def binding_error(values):
     if len(set(keys)) != len(keys):
         return "不同操作不能使用相同的快捷键。"
     if any(key in RESERVED_BINDINGS for key in keys):
-        return "Esc、Ctrl+O、Ctrl+, 和 Ctrl+C 已用于退出专注、打开、偏好和复制。"
+        return "Esc、Ctrl+O、Ctrl+, 和 Ctrl+C 已用于退出专注、添加书籍、配置和复制。"
     if any(windows_hotkey(key) is None for key in keys[-2:]):
         return "这个按键不能注册为 Windows 全局快捷键，请改用其他按键。"
     if windows_hotkey(keys[-2]) == windows_hotkey(keys[-1]):

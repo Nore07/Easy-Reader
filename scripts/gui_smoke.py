@@ -49,17 +49,26 @@ def main():
         assert window.reader.page == 1
         anchor = window.reader.offset
         window.grab().save(str(args.output / "reader.png"))
+        window.toggle_main_page()
+        assert window.main_pages.currentWidget() is window.shelf
+        window.grab().save(str(args.output / "bookshelf.png"))
+        window.toggle_main_page()
+        assert window.main_pages.currentWidget() is window.reader_page
         dialog = SettingsDialog(window.settings, window)
         dialog.show()
         QTest.qWait(100)
         dialog.grab().save(str(args.output / "settings.png"))
         dialog.reject()
-        window.apply_settings(Settings(theme="dark", floating=True, opacity=0.8, font_size=22))
+        window.apply_settings(Settings(theme="dark", opacity=0.8, font_size=22))
         window.resize(470, 600)
         QTest.qWait(150)
         app.processEvents()
         assert window.reader.offset == anchor
-        window.grab().save(str(args.output / "floating.png"))
+        window.toggle_focus()
+        QTest.qWait(80)
+        assert window.focus_mode and window.testAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+        window.grab().save(str(args.output / "focus.png"))
+        window.toggle_focus()
         tray_available = window.tray is not None
         if tray_available:
             window.hide_or_minimize()

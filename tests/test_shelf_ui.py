@@ -18,9 +18,15 @@ def test_sidebar_splits_reading_and_shelf_and_add_copies_source(app, tmp_path):
 
     window.add_book_paths([original])
 
-    assert [window.tabs.tabText(i) for i in range(window.tabs.count())] == ["阅读", "书架", "资料"]
-    assert [window.reading_tabs.tabText(i) for i in range(2)] == ["目录", "书签"]
+    assert [window.reading_tabs.tabText(i) for i in range(3)] == ["目录", "书签", "资料"]
+    assert window.main_pages.count() == 2
+    assert window.main_pages.currentWidget() is window.reader_page
+    assert window.main_pages.widget(1) is window.shelf
     assert window.open_button.text() == "添加书籍"
+    window.toggle_main_page()
+    assert window.main_pages.currentWidget() is window.shelf
+    window.toggle_main_page()
+    assert window.main_pages.currentWidget() is window.reader_page
     assert original.exists()
     assert len(window.store.state["books"]) == 1
     record = window.store.state["books"][0]
