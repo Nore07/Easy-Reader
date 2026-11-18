@@ -2,6 +2,10 @@
 from PySide6.QtCore import QLibraryInfo, QLocale, QTranslator
 
 EN = {
+    "启用全局显示 / 隐藏和紧急退出快捷键": "Enable global show / hide and emergency exit shortcuts",
+    "显示 / 隐藏快捷键": "Show / hide shortcut", "紧急退出快捷键": "Emergency exit shortcut",
+    "显示 / 隐藏：{message}": "Show / hide: {message}", "紧急退出：{message}": "Emergency exit: {message}",
+    "同一按键切换隐藏和显示。启用全局快捷键后，窗口隐藏或失去焦点时也可使用。\n紧急退出直接关闭程序，不隐藏到托盘，也不等待后台导入；会尝试保存当前位置。": "The same key toggles hide and show. Enable global shortcuts to use them while hidden or unfocused.\nEmergency exit closes the process, bypassing the tray and import workers. It attempts to save your position.",
     "静读": "QuietReader", "打开": "Open", "偏好": "Preferences", "隐藏": "Hide",
     "目录 / 最近": "Library", "浮窗": "Floating", "置顶": "On top", "编码": "Encoding",
     "专注": "Focus", "退出专注": "Exit focus", "进入专注模式": "Enter focus mode", "退出专注模式": "Exit focus mode",

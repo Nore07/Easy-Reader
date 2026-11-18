@@ -15,7 +15,10 @@ def main():
     parser.add_argument("--transparent", action="store_true", help="Verify startup with a fully transparent floating window")
     parser.add_argument("--exe", type=Path, help="Executable to verify; defaults to the latest successful build")
     parser.add_argument("--focus", action="store_true", help="Verify English preferences and keyboard focus entry/exit in the executable")
+    parser.add_argument("--emergency", action="store_true", help="Verify global hide/show, emergency process exit and restart")
     args = parser.parse_args()
+    if args.emergency and (args.focus or args.transparent):
+        parser.error("Run the emergency scenario separately")
     if sys.platform != "win32":
         raise SystemExit("Windows only")
     root = Path(__file__).resolve().parents[1]
@@ -28,6 +31,7 @@ def main():
     user32.GetWindowThreadProcessId.argtypes = [wintypes.HWND, ctypes.POINTER(wintypes.DWORD)]
     user32.GetWindowTextW.argtypes = [wintypes.HWND, wintypes.LPWSTR, ctypes.c_int]
     user32.PostMessageW.argtypes = [wintypes.HWND, wintypes.UINT, wintypes.WPARAM, wintypes.LPARAM]
+    user32.PostThreadMessageW.argtypes = [wintypes.DWORD, wintypes.UINT, wintypes.WPARAM, wintypes.LPARAM]
     user32.IsWindowVisible.argtypes = [wintypes.HWND]
     user32.GetWindowLongW.argtypes = [wintypes.HWND, ctypes.c_int]
     user32.GetWindowLongW.restype = wintypes.LONG
@@ -42,6 +46,8 @@ def main():
             settings.update(floating=True, opacity=0, background_color="#111111")
         if args.focus:
             settings.update(language="en", text_color="#123456", next_key="J", previous_key="K", focus_key="F8")
+        if args.emergency:
+            settings.update(close_to_tray=True, global_hotkey=True, hotkey="Ctrl+Alt+F9", emergency_key="Ctrl+Alt+F8")
         (data / "state.json").write_text(json.dumps({"version": 1, "settings": settings, "books": [], "positions": {}}), encoding="utf-8")
         started = time.monotonic()
         process = subprocess.Popen([str(executable), "--data-dir", str(data), str(book)], cwd=root)
@@ -112,7 +118,39 @@ def main():
                 time.sleep(0.1)
                 post_key(0x1B)  # Escape
                 wait_caption(True)
-            user32.PostMessageW(windows[0], 0x0010, 0, 0)  # WM_CLOSE to this process only
+            emergency_seconds = None
+            if args.emergency:
+                def wait_visibility(expected):
+                    end = time.monotonic() + 10
+                    while time.monotonic() < end and process.poll() is None:
+                        windows.clear()
+                        user32.EnumWindows(collect, 0)
+                        if bool(windows) == expected:
+                            return
+                        time.sleep(0.05)
+                    raise AssertionError("Shortcut did not change window visibility")
+
+                def dispatch(thread, identifier):
+                    assert user32.PostThreadMessageW(thread, 0x0312, identifier, 0)
+
+                thread = user32.GetWindowThreadProcessId(windows[0], None)
+                dispatch(thread, 0x5152)
+                wait_visibility(False)
+                dispatch(thread, 0x5152)
+                wait_visibility(True)
+                dispatch(thread, 0x5152)
+                wait_visibility(False)
+                before_exit = time.monotonic()
+                dispatch(thread, 0x5153)
+                assert process.wait(timeout=3) == 0
+                emergency_seconds = round(time.monotonic() - before_exit, 3)
+                assert not (data / "quietreader.lock").exists()
+                process = subprocess.Popen([str(executable), "--data-dir", str(data)], cwd=root)
+                wait_visibility(True)
+                thread = user32.GetWindowThreadProcessId(windows[0], None)
+                dispatch(thread, 0x5153)
+            else:
+                user32.PostMessageW(windows[0], 0x0010, 0, 0)  # WM_CLOSE to this process only
             assert process.wait(timeout=15) == 0
             state = json.loads((data / "state.json").read_text(encoding="utf-8"))
             assert state["last_book"] in state["positions"]
@@ -126,7 +164,7 @@ def main():
                 assert state["positions"][state["last_book"]]["section_id"] != first_section
             output = root / "artifacts"
             output.mkdir(exist_ok=True)
-            report = {"executable_start": True, "book_import": True, "position_saved": True, "clean_exit": True, "transparent_startup": args.transparent, "focus_keyboard_and_english": args.focus, "startup_and_import_seconds": startup}
+            report = {"executable_start": True, "book_import": True, "position_saved": True, "clean_exit": True, "transparent_startup": args.transparent, "focus_keyboard_and_english": args.focus, "global_visibility_emergency_restart": args.emergency, "emergency_exit_seconds": emergency_seconds, "startup_and_import_seconds": startup}
             (output / "packaged-smoke.json").write_text(json.dumps(report, indent=2), encoding="utf-8")
             print(json.dumps(report))
         finally:

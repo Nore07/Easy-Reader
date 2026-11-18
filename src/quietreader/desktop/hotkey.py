@@ -11,10 +11,11 @@ from quietreader.keys import windows_hotkey
 class GlobalHotkey(QAbstractNativeEventFilter):
     ID = 0x5152
 
-    def __init__(self, application, callback):
+    def __init__(self, application, callback, identifier=None):
         super().__init__()
         self.application = application
         self.callback = callback
+        self.ID = self.ID if identifier is None else identifier
         self.registered = False
         application.installNativeEventFilter(self)
 

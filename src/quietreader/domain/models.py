@@ -1,7 +1,7 @@
 from dataclasses import asdict, dataclass, field
 import math
 import re
-from quietreader.keys import binding_error, normalize_binding
+from quietreader.keys import BINDING_FIELDS, binding_error, normalize_binding
 
 
 @dataclass
@@ -50,6 +50,7 @@ class Settings:
     close_to_tray: bool = True
     global_hotkey: bool = False
     hotkey: str = "Ctrl+Alt+R"
+    emergency_key: str = "Ctrl+Alt+Q"
     next_key: str = "PgDown"
     previous_key: str = "PgUp"
     focus_key: str = "F10"
@@ -84,7 +85,10 @@ class Settings:
             result.language = raw["language"]
         if isinstance(raw.get("font_family"), str) and 0 < len(raw["font_family"]) <= 100:
             result.font_family = raw["font_family"]
-        bindings = {key: normalize_binding(raw.get(key, getattr(result, key))) for key in ("next_key", "previous_key", "focus_key", "hotkey")}
+        bindings = {key: normalize_binding(raw.get(key, getattr(result, key))) for key in BINDING_FIELDS}
+        if "emergency_key" not in raw:
+            used = {value for key, value in bindings.items() if key != "emergency_key"}
+            bindings["emergency_key"] = next(key for key in ("Ctrl+Alt+Q", "Ctrl+Shift+Q", "Ctrl+Alt+Shift+Q", "Ctrl+Alt+F9", "Ctrl+Alt+F8") if key not in used)
         if not binding_error(bindings):
             for key, value in bindings.items():
                 setattr(result, key, value)

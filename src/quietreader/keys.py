@@ -3,6 +3,7 @@ from PySide6.QtCore import Qt
 from PySide6.QtGui import QKeySequence
 
 RESERVED_BINDINGS = {"Esc", "Ctrl+O", "Ctrl+,", "Ctrl+C"}
+BINDING_FIELDS = ("next_key", "previous_key", "focus_key", "hotkey", "emergency_key")
 
 
 def normalize_binding(value):
@@ -18,15 +19,17 @@ def normalize_binding(value):
 
 
 def binding_error(values):
-    keys = [normalize_binding(values.get(name, "")) for name in ("next_key", "previous_key", "focus_key", "hotkey")]
+    keys = [normalize_binding(values.get(name, "Ctrl+Alt+Q" if name == "emergency_key" else "")) for name in BINDING_FIELDS]
     if not all(keys):
         return "请为每个操作录入一个按键或组合键。"
     if len(set(keys)) != len(keys):
         return "不同操作不能使用相同的快捷键。"
     if any(key in RESERVED_BINDINGS for key in keys):
         return "Esc、Ctrl+O、Ctrl+, 和 Ctrl+C 已用于退出专注、打开、偏好和复制。"
-    if windows_hotkey(keys[-1]) is None:
+    if any(windows_hotkey(key) is None for key in keys[-2:]):
         return "这个按键不能注册为 Windows 全局快捷键，请改用其他按键。"
+    if windows_hotkey(keys[-2]) == windows_hotkey(keys[-1]):
+        return "不同操作不能使用相同的快捷键。"
     return ""
 
 

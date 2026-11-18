@@ -1,4 +1,4 @@
-from PySide6.QtCore import QEvent, Qt
+from PySide6.QtCore import QEvent, Qt, Signal
 from PySide6.QtGui import QKeySequence
 from PySide6.QtWidgets import QDialog, QLabel, QPushButton, QVBoxLayout
 
@@ -34,6 +34,9 @@ class KeyCaptureDialog(QDialog):
 
 
 class KeyBindingButton(QPushButton):
+    capture_started = Signal()
+    capture_finished = Signal()
+
     def __init__(self, sequence, language, parent=None):
         super().__init__(parent)
         self.sequence, self.language = sequence, language
@@ -48,6 +51,11 @@ class KeyBindingButton(QPushButton):
         self.refresh()
 
     def capture(self):
-        dialog = KeyCaptureDialog(self.language, self)
-        if dialog.exec() == QDialog.DialogCode.Accepted:
-            self.set_sequence(dialog.sequence)
+        self.capture_started.emit()
+        try:
+            dialog = KeyCaptureDialog(self.language, self)
+            if dialog.exec() == QDialog.DialogCode.Accepted:
+                self.set_sequence(dialog.sequence)
+            dialog.deleteLater()
+        finally:
+            self.capture_finished.emit()

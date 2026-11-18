@@ -25,6 +25,8 @@ class PageView(QWidget):
     reflowed = Signal()
     exit_focus = Signal()
     focus_requested = Signal()
+    visibility_requested = Signal()
+    emergency_requested = Signal()
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -162,7 +164,13 @@ class PageView(QWidget):
 
     def keyPressEvent(self, event):
         sequence = QKeySequence(event.keyCombination()).toString(QKeySequence.SequenceFormat.PortableText)
-        if event.key() == Qt.Key.Key_Escape and self.focus_mode:
+        if sequence == self.settings.emergency_key:
+            if not event.isAutoRepeat():
+                self.emergency_requested.emit()
+        elif sequence == self.settings.hotkey:
+            if not event.isAutoRepeat():
+                self.visibility_requested.emit()
+        elif event.key() == Qt.Key.Key_Escape and self.focus_mode:
             self.exit_focus.emit()
         elif sequence == self.settings.focus_key:
             if not event.isAutoRepeat():

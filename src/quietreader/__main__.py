@@ -30,6 +30,7 @@ def main():
     if not lock.tryLock(100):
         QMessageBox.information(None, tr("QuietReader 已在运行"), tr("同一数据目录的阅读器已在运行，请从托盘显示窗口。"))
         return 0
+    app._quietreader_release_lock = lock.unlock
     window = MainWindow(StateStore(directory))
     app.aboutToQuit.connect(window.shutdown)
     app.commitDataRequest.connect(lambda *_: window.save_state())

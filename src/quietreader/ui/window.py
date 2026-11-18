@@ -1,6 +1,7 @@
 from dataclasses import asdict, replace
 from datetime import datetime, timezone
 from pathlib import Path
+import os
 
 from PySide6.QtCore import QObject, QPoint, QRunnable, QThreadPool, Qt, QTimer, Signal
 from PySide6.QtGui import QAction, QColor, QGuiApplication, QIcon, QKeySequence, QPainter, QPen, QPixmap, QPolygon, QShortcut
@@ -94,6 +95,7 @@ class MainWindow(QMainWindow):
         self.sidebar_manual = False
         self.tray = None
         self.hotkey = None
+        self.emergency_hotkey = None
         self.worker = None
         self.pool = QThreadPool(self)
         self.pool.setMaxThreadCount(1)
@@ -221,6 +223,8 @@ class MainWindow(QMainWindow):
         self.reader.turned.connect(self.turn_page)
         self.reader.exit_focus.connect(lambda: self.toggle_focus() if self.focus_mode else None)
         self.reader.focus_requested.connect(self.toggle_focus)
+        self.reader.visibility_requested.connect(self.toggle_visible)
+        self.reader.emergency_requested.connect(self.emergency_exit)
         self.reader.reflowed.connect(self._update_progress)
         reading.addWidget(self.reader, 1)
         self.progress = QSlider(Qt.Orientation.Horizontal)
@@ -275,11 +279,18 @@ class MainWindow(QMainWindow):
         self.escape_shortcut = QShortcut(QKeySequence("Esc"), self)
         self.escape_shortcut.activated.connect(lambda: self.toggle_focus() if self.focus_mode else None)
         self.escape_shortcut.setEnabled(False)
+        self.visibility_shortcut = QShortcut(QKeySequence(self.settings.hotkey), self)
+        self.visibility_shortcut.setAutoRepeat(False)
+        self.visibility_shortcut.activated.connect(self.toggle_visible)
+        self.emergency_shortcut = QShortcut(QKeySequence(self.settings.emergency_key), self)
+        self.emergency_shortcut.setAutoRepeat(False)
+        self.emergency_shortcut.activated.connect(self.emergency_exit)
         self._update_progress()
 
     def _setup_system(self):
         app = QApplication.instance()
         self.hotkey = GlobalHotkey(app, self.toggle_visible)
+        self.emergency_hotkey = GlobalHotkey(app, self.emergency_exit, identifier=0x5153)
         if QSystemTrayIcon.isSystemTrayAvailable():
             self.tray = QSystemTrayIcon(self.windowIcon(), self)
             self.tray.setToolTip("QuietReader · 静读")
@@ -558,6 +569,8 @@ class MainWindow(QMainWindow):
         self.eyebrow.setVisible(self.width() >= 700 and not self.focus_mode)
         self.focus_button.setChecked(self.focus_mode)
         self.focus_shortcut.setKey(QKeySequence(settings.focus_key))
+        self.visibility_shortcut.setKey(QKeySequence(settings.hotkey))
+        self.emergency_shortcut.setKey(QKeySequence(settings.emergency_key))
         self.escape_shortcut.setEnabled(self.focus_mode)
         self.root_layout.setContentsMargins(*((0, 0, 0, 0) if self.focus_mode else (14, 12, 14, 6)))
         self.root_layout.setSpacing(0 if self.focus_mode else 9)
@@ -568,20 +581,34 @@ class MainWindow(QMainWindow):
             self.show()
             self.activateWindow()
             self.reader.setFocus()
-        if self.hotkey:
-            warning = self.hotkey.configure(settings.global_hotkey, settings.hotkey)
-            self.hotkey_notice.setText(self.t(warning))
-            self.hotkey_notice.setVisible(bool(warning))
+        self._configure_hotkeys()
         if self.focus_mode:
             for widget in self.chrome_widgets:
                 widget.hide()
         self.schedule_save()
+
+    def _configure_hotkeys(self, enabled=None):
+        settings = self.settings
+        enabled = settings.global_hotkey if enabled is None else enabled
+        if self.hotkey:
+            warning = self.hotkey.configure(enabled, settings.hotkey)
+            warnings = [self.t("显示 / 隐藏：{message}", message=self.t(warning))] if warning else []
+            if self.emergency_hotkey:
+                error = self.emergency_hotkey.configure(enabled, settings.emergency_key)
+                if error:
+                    warnings.append(self.t("紧急退出：{message}", message=self.t(error)))
+            self.hotkey_notice.setText("\n".join(warnings))
+            self.hotkey_notice.setVisible(bool(warnings))
+            if self.focus_mode:
+                self.hotkey_notice.hide()
 
     def show_settings(self):
         if self.focus_mode:
             self.toggle_focus()
         self.reveal()
         dialog = SettingsDialog(self.settings, self)
+        dialog.capture_started.connect(lambda: self._configure_hotkeys(False))
+        dialog.capture_finished.connect(lambda: self._configure_hotkeys())
         if dialog.exec() == QDialog.DialogCode.Accepted:
             self.apply_settings(dialog.values())
 
@@ -683,6 +710,8 @@ class MainWindow(QMainWindow):
         self.pool.waitForDone()
         if self.hotkey:
             self.hotkey.close()
+        if self.emergency_hotkey:
+            self.emergency_hotkey.close()
         if self.tray:
             self.tray.hide()
         self.hide()
@@ -690,3 +719,29 @@ class MainWindow(QMainWindow):
     def quit_app(self):
         self.quitting = True
         self.close()
+
+    def emergency_exit(self):
+        """Exit this process without a tray close or waiting for import workers."""
+        self.quitting = True
+        try:
+            self.hide()
+            if self.tray:
+                self.tray.hide()
+            self.save_timer.stop()
+            self.save_state()
+        except Exception:
+            # An unavailable disk must not turn emergency exit into a dialog.
+            pass
+        finally:
+            self.closed = True
+            try:
+                if self.hotkey:
+                    self.hotkey.close()
+                if self.emergency_hotkey:
+                    self.emergency_hotkey.close()
+                release_lock = getattr(QApplication.instance(), "_quietreader_release_lock", None)
+                if release_lock:
+                    release_lock()
+            except Exception:
+                pass
+            os._exit(0)

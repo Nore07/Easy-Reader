@@ -1,4 +1,5 @@
 from PySide6.QtGui import QColor, QFont
+from PySide6.QtCore import Signal
 from PySide6.QtWidgets import (
     QApplication,
     QCheckBox, QColorDialog, QComboBox, QDialog, QDialogButtonBox, QDoubleSpinBox,
@@ -9,11 +10,14 @@ from PySide6.QtWidgets import (
 from quietreader.domain.models import Settings
 from quietreader.desktop.color_picker import DesktopColorPicker
 from quietreader.i18n import tr, install_qt_translator
-from quietreader.keys import binding_error
+from quietreader.keys import BINDING_FIELDS, binding_error
 from quietreader.ui.key_capture import KeyBindingButton
 
 
 class SettingsDialog(QDialog):
+    capture_started = Signal()
+    capture_finished = Signal()
+
     def __init__(self, settings, parent=None):
         super().__init__(parent)
         self.resize(710, 790)
@@ -74,19 +78,22 @@ class SettingsDialog(QDialog):
             self.row(label, field)
             self.fields[key] = field
         self.note("设为 0 即全透明，文字保持不透明；仅在浮窗生效。\n取色时窗口会暂时消失，单击选择，Esc / 右键取消。\n取色结果仅保存在本机；背景变化后可重新取色。")
-        for key, label in [("floating", "使用阅读浮窗"), ("always_on_top", "窗口始终置顶"), ("close_to_tray", "关闭窗口时隐藏至托盘"), ("global_hotkey", "启用全局显示 / 隐藏快捷键")]:
+        for key, label in [("floating", "使用阅读浮窗"), ("always_on_top", "窗口始终置顶"), ("close_to_tray", "关闭窗口时隐藏至托盘"), ("global_hotkey", "启用全局显示 / 隐藏和紧急退出快捷键")]:
             field = QCheckBox()
             self.texts.append((field, label))
             field.setChecked(getattr(settings, key))
             self.fields[key] = field
             self.form.addRow(field)
-        for key, label in [("next_key", "下一页（正文聚焦时）"), ("previous_key", "上一页（正文聚焦时）"), ("focus_key", "切换专注模式"), ("hotkey", "全局快捷键")]:
+        for key, label in [("next_key", "下一页（正文聚焦时）"), ("previous_key", "上一页（正文聚焦时）"), ("focus_key", "切换专注模式"), ("hotkey", "显示 / 隐藏快捷键"), ("emergency_key", "紧急退出快捷键")]:
             field = KeyBindingButton(getattr(settings, key), settings.language)
+            field.capture_started.connect(self.capture_started.emit)
+            field.capture_finished.connect(self.capture_finished.emit)
             self.fields[key] = field
             self.row(label, field)
         self.hotkey = self.fields["hotkey"]
         self.note("点击修改，然后按下一个按键或组合键。Esc 取消录入。\nEsc 固定退出专注模式；打开、偏好和复制的快捷键保留。")
         self.note("专注模式仅显示正文，F10（可修改）或 Esc 退出，也可从托盘或正文右键菜单退出。")
+        self.note("同一按键切换隐藏和显示。启用全局快捷键后，窗口隐藏或失去焦点时也可使用。\n紧急退出直接关闭程序，不隐藏到托盘，也不等待后台导入；会尝试保存当前位置。")
         self.buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Save | QDialogButtonBox.StandardButton.Cancel | QDialogButtonBox.StandardButton.RestoreDefaults)
         for role, source in [(QDialogButtonBox.StandardButton.Save, "保存偏好"), (QDialogButtonBox.StandardButton.Cancel, "取消"), (QDialogButtonBox.StandardButton.RestoreDefaults, "恢复默认")]:
             self.texts.append((self.buttons.button(role), source))
@@ -196,7 +203,7 @@ class SettingsDialog(QDialog):
         super().done(result)
 
     def accept(self):
-        error = binding_error({key: self.fields[key].sequence for key in ("next_key", "previous_key", "focus_key", "hotkey")})
+        error = binding_error({key: self.fields[key].sequence for key in BINDING_FIELDS})
         if error:
             QMessageBox.warning(self, self.t("快捷键冲突"), self.t(error))
             return
