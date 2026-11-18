@@ -32,10 +32,10 @@ py -3.12 -m venv .venv
 To build a portable onedir package:
 
 ```powershell
-.\scripts\build.ps1 -OutputRoot dist/releases/0.1.0
+.\scripts\build.ps1 -OutputRoot dist/releases/0.1.1
 ```
 
-The executable and its required runtime files are written to `dist/releases/0.1.0/QuietReader/`.
+The executable and its required runtime files are written to `dist/releases/0.1.1/QuietReader/`.
 
 ## Supported formats and limits
 

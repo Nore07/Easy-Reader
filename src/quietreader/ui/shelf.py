@@ -36,12 +36,16 @@ class ShelfPanel(QWidget):
         self.title.setObjectName("shelfTitle")
         heading_layout.addWidget(self.title)
         heading_layout.addStretch(1)
+        self.add_button = QPushButton()
+        self.add_button.setObjectName("primary")
+        self.add_button.clicked.connect(self.add_requested.emit)
         self.category_create = QPushButton()
-        self.category_create.setObjectName("primary")
+        self.category_create.setObjectName("secondaryAction")
         self.category_create.clicked.connect(self.create_category_requested.emit)
         self.category_delete = QPushButton()
         self.category_delete.setObjectName("quietAction")
         self.category_delete.clicked.connect(self._delete_selected_category)
+        heading_layout.addWidget(self.add_button)
         heading_layout.addWidget(self.category_create)
         heading_layout.addWidget(self.category_delete)
         outer.addWidget(heading)
@@ -137,6 +141,9 @@ class ShelfPanel(QWidget):
     def retranslate(self, language):
         self.language = language
         self.title.setText(tr("书架", language))
+        self.add_button.setText(tr("添加书籍", language))
+        self.add_button.setToolTip(tr("添加本地 TXT / EPUB 到书架 · Ctrl+O", language))
+        self.add_button.setAccessibleName(tr("添加书籍", language))
         self.all_target_label.setText(tr("移动到分类", language))
         self.category_target_label.setText(tr("移动到分类", language))
         for index, source in enumerate(("最近阅读", "所有书籍", "分类")):

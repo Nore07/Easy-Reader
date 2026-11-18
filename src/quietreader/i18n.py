@@ -21,6 +21,7 @@ EN = {
     "我的阅读": "MY READING", "阅读": "Reading", "书架": "Bookshelf", "阅读 / 书架": "Reading / bookshelf",
     "进入阅读页面，查看目录、书签和资料": "Go to Reading to view contents, bookmarks, and book info",
     "浏览最近阅读、所有书籍和分类": "Browse recent, all books, and categories",
+    "隐藏 / 最小化": "Hide / minimize", "最大化窗口": "Maximize window", "还原窗口": "Restore window", "关闭窗口": "Close window",
     "目录": "Contents", "最近": "Recent", "最近阅读": "Recently read", "所有书籍": "All books", "分类": "Categories", "未分类": "Unclassified",
     "页码": "Pages", "位置": "Places", "书签": "Bookmarks", "资料": "Book info", "书籍分类": "Book categories", "分类中的书籍": "Books in category",
     "移动": "Move", "移除": "Remove", "移动到分类": "Move to category", "从书架移除": "Remove from bookshelf", "新建分类": "New category", "删除分类": "Delete category", "分类名称": "Category name",

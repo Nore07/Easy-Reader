@@ -3,7 +3,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 import os
 
-from PySide6.QtCore import QObject, QPoint, QRunnable, QThreadPool, Qt, QTimer, Signal
+from PySide6.QtCore import QEvent, QObject, QPoint, QRunnable, QThreadPool, Qt, QTimer, Signal
 from PySide6.QtGui import QAction, QColor, QGuiApplication, QIcon, QKeySequence, QPainter, QPen, QPixmap, QPolygon, QShortcut
 from PySide6.QtWidgets import (
     QApplication, QComboBox, QDialog, QFileDialog, QHBoxLayout, QLabel, QInputDialog, QMessageBox,
@@ -74,6 +74,71 @@ class DragHeader(QWidget):
             super().mousePressEvent(event)
 
 
+class WindowSurface(QWidget):
+    """Surface with frameless-window resize hit zones along its outer padding."""
+
+    _resize_margin = 8
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setMouseTracking(True)
+
+    def _edges_at(self, position):
+        window = self.window()
+        if window.isMaximized() or window.isFullScreen():
+            return Qt.Edge(0)
+        x, y = position.x(), position.y()
+        width, height = self.width(), self.height()
+        edges = Qt.Edge(0)
+        if x < self._resize_margin:
+            edges |= Qt.Edge.LeftEdge
+        elif x >= width - self._resize_margin:
+            edges |= Qt.Edge.RightEdge
+        if y < self._resize_margin:
+            edges |= Qt.Edge.TopEdge
+        elif y >= height - self._resize_margin:
+            edges |= Qt.Edge.BottomEdge
+        return edges
+
+    @staticmethod
+    def _cursor_for_edges(edges):
+        left = bool(edges & Qt.Edge.LeftEdge)
+        right = bool(edges & Qt.Edge.RightEdge)
+        top = bool(edges & Qt.Edge.TopEdge)
+        bottom = bool(edges & Qt.Edge.BottomEdge)
+        if (top and left) or (bottom and right):
+            return Qt.CursorShape.SizeFDiagCursor
+        if (top and right) or (bottom and left):
+            return Qt.CursorShape.SizeBDiagCursor
+        if left or right:
+            return Qt.CursorShape.SizeHorCursor
+        if top or bottom:
+            return Qt.CursorShape.SizeVerCursor
+        return None
+
+    def mouseMoveEvent(self, event):
+        if not getattr(self.window(), "focus_mode", False):
+            cursor = self._cursor_for_edges(self._edges_at(event.position()))
+            if cursor is None:
+                self.unsetCursor()
+            else:
+                self.setCursor(cursor)
+        super().mouseMoveEvent(event)
+
+    def leaveEvent(self, event):
+        self.unsetCursor()
+        super().leaveEvent(event)
+
+    def mousePressEvent(self, event):
+        if event.button() == Qt.MouseButton.LeftButton and not getattr(self.window(), "focus_mode", False):
+            edges = self._edges_at(event.position())
+            handle = self.window().windowHandle()
+            if edges and handle and handle.startSystemResize(edges):
+                event.accept()
+                return
+        super().mousePressEvent(event)
+
+
 class MainWindow(QMainWindow):
     def __init__(self, store, enable_system=True):
         super().__init__()
@@ -136,16 +201,27 @@ class MainWindow(QMainWindow):
         button.clicked.connect(callback)
         return button
 
+    def _window_control(self, text, callback, accessible_name, object_name="windowControl"):
+        button = QPushButton(text)
+        button.setObjectName(object_name)
+        button.setToolTip(accessible_name)
+        button.setAccessibleName(accessible_name)
+        button.setFixedSize(34, 30)
+        button.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        button.clicked.connect(callback)
+        return button
+
     def _build_ui(self):
-        self.surface = QWidget()
+        self.surface = WindowSurface()
         self.surface.setObjectName("surface")
         self.setCentralWidget(self.surface)
         root = self.root_layout = QVBoxLayout(self.surface)
         root.setContentsMargins(14, 12, 14, 6)
-        root.setSpacing(9)
+        root.setSpacing(8)
         header = DragHeader()
+        header.setObjectName("titleBar")
         top = QHBoxLayout(header)
-        top.setContentsMargins(2, 0, 0, 6)
+        top.setContentsMargins(3, 1, 3, 2)
         brand = self.brand = self._label("静读", "brand")
         brand.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
         top.addWidget(brand)
@@ -153,15 +229,18 @@ class MainWindow(QMainWindow):
         self.eyebrow.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
         top.addWidget(self.eyebrow)
         top.addStretch()
-        self.open_button = self._button("添加书籍", self.choose_file)
-        self.open_button.setObjectName("primary")
-        self.open_button.setToolTip("添加本地 TXT / EPUB 到书架 · Ctrl+O")
-        top.addWidget(self.open_button)
-        top.addWidget(self._button("排版", self.show_layout_panel))
+        self.layout_button = self._button("排版", self.show_layout_panel)
         self.config_button = self._button("配置", self.show_settings)
+        top.addWidget(self.layout_button)
         top.addWidget(self.config_button)
-        top.addWidget(self._button("隐藏", self.hide_or_minimize))
+        self.minimize_button = self._window_control("−", lambda: self.hide_or_minimize(), "隐藏 / 最小化")
+        self.maximize_button = self._window_control("□", lambda: self.toggle_maximize(), "最大化窗口")
+        self.close_button = self._window_control("×", lambda: self.close(), "关闭窗口", "windowClose")
+        top.addWidget(self.minimize_button)
+        top.addWidget(self.maximize_button)
+        top.addWidget(self.close_button)
         root.addWidget(header)
+
         tools_widget = QWidget()
         tools = QHBoxLayout(tools_widget)
         tools.setContentsMargins(0, 0, 0, 0)
@@ -179,6 +258,7 @@ class MainWindow(QMainWindow):
         page_navigation_layout.addWidget(self.reading_button)
         page_navigation_layout.addWidget(self.shelf_button)
         tools.addWidget(self.page_navigation)
+        tools.addStretch(1)
         self.pin_button = self._button("置顶", self.toggle_pin, True)
         tools.addWidget(self.pin_button)
         self.encoding_button = self._button("编码", self.toggle_encoding)
@@ -287,6 +367,8 @@ class MainWindow(QMainWindow):
         reading.addWidget(navigation_widget)
         self.main_pages.addWidget(self.reader_page)
         self.shelf = ShelfPanel()
+        self.open_button = self.shelf.add_button
+        self.shelf.add_requested.connect(self.choose_file)
         self.shelf.open_requested.connect(self.open_shelf_book)
         self.shelf.move_requested.connect(self.move_shelf_book)
         self.shelf.remove_requested.connect(self._confirm_remove_shelf_book)
@@ -1008,6 +1090,24 @@ class MainWindow(QMainWindow):
         self.main_pages.setCurrentWidget(self.shelf)
         self._sync_page_navigation()
 
+    def toggle_maximize(self):
+        if self.focus_mode:
+            return
+        if self.isMaximized():
+            self.showNormal()
+        else:
+            self.showMaximized()
+        self._update_window_controls()
+
+    def _update_window_controls(self):
+        if not hasattr(self, "maximize_button"):
+            return
+        restore = self.isMaximized()
+        label = "还原窗口" if restore else "最大化窗口"
+        self.maximize_button.setText("❐" if restore else "□")
+        self.maximize_button.setToolTip(self.t(label))
+        self.maximize_button.setAccessibleName(self.t(label))
+
     def toggle_main_page(self):
         """Compatibility helper for existing shortcuts and automation scripts."""
         if self.main_pages.currentWidget() is self.reader_page:
@@ -1097,6 +1197,7 @@ class MainWindow(QMainWindow):
         self.config_button.setText(self.t("配置"))
         self.reading_button.setText(self.t("阅读"))
         self.shelf_button.setText(self.t("书架"))
+        self._update_window_controls()
         for index, source in enumerate(("目录", "书签", "资料", "页码", "位置")):
             self.reading_tabs.setTabText(index, self.t(source))
         self.shelf.retranslate(self.settings.language)
@@ -1123,7 +1224,7 @@ class MainWindow(QMainWindow):
         settings = self.settings
         was_visible = self.isVisible()
         bounds = self.geometry()
-        flags = Qt.WindowType.Tool | Qt.WindowType.FramelessWindowHint if self.focus_mode else Qt.WindowType.Window
+        flags = Qt.WindowType.Tool | Qt.WindowType.FramelessWindowHint if self.focus_mode else Qt.WindowType.Window | Qt.WindowType.FramelessWindowHint
         if self.focus_mode:
             flags |= Qt.WindowType.NoDropShadowWindowHint
         if settings.always_on_top:
@@ -1136,7 +1237,7 @@ class MainWindow(QMainWindow):
         self.pin_button.setChecked(settings.always_on_top)
         self.reader.apply_settings(settings)
         self._sync_page_navigation()
-        self.brand.setVisible(self.width() >= 700 and not self.focus_mode)
+        self.brand.setVisible(not self.focus_mode)
         self.eyebrow.setVisible(self.width() >= 700 and not self.focus_mode)
         self.focus_button.setChecked(self.focus_mode)
         self.focus_shortcut.setKey(QKeySequence(settings.focus_key))
@@ -1271,8 +1372,14 @@ class MainWindow(QMainWindow):
         if hasattr(self, "sidebar"):
             self._sync_page_navigation()
             self.eyebrow.setVisible(self.width() >= 700 and not self.focus_mode)
-            self.brand.setVisible(self.width() >= 700 and not self.focus_mode)
+            self.brand.setVisible(not self.focus_mode)
+            self._update_window_controls()
             self._sync_chapter_button_labels()
+
+    def changeEvent(self, event):
+        super().changeEvent(event)
+        if event.type() == QEvent.Type.WindowStateChange:
+            self._update_window_controls()
 
     def moveEvent(self, event):
         super().moveEvent(event)
