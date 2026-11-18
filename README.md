@@ -6,9 +6,9 @@ QuietReader 是一款 Windows 本地 TXT / EPUB 阅读器，使用 Python + PySi
 
 ## Windows portable package
 
-Published Windows ZIPs, when available, will be listed on [GitHub Releases](https://github.com/Nore07/Easy-Reader/releases). Extract the **entire** archive, then run `QuietReader\QuietReader.exe`; keep the included files together because the executable depends on its Qt runtime files. If no build is listed yet, use the source-build steps below.
+Published Windows ZIPs, when available, will be listed on [GitHub Releases](https://github.com/Nore07/Quiet-Reader/releases). Extract the **entire** archive, then run `QuietReader\QuietReader.exe`; keep the included files together because the executable depends on its Qt runtime files. If no build is listed yet, use the source-build steps below.
 
-已发布的 Windows ZIP 会列在 [GitHub Releases](https://github.com/Nore07/Easy-Reader/releases)。解压整个压缩包后运行 `QuietReader\QuietReader.exe`，并保留目录中的全部文件；程序需要随包提供的 Qt 运行组件。如果 Releases 暂无安装包，可按下方步骤从源码构建。
+已发布的 Windows ZIP 会列在 [GitHub Releases](https://github.com/Nore07/Quiet-Reader/releases)。解压整个压缩包后运行 `QuietReader\QuietReader.exe`，并保留目录中的全部文件；程序需要随包提供的 Qt 运行组件。如果 Releases 暂无安装包，可按下方步骤从源码构建。
 
 ## Features
 
@@ -16,7 +16,7 @@ Published Windows ZIPs, when available, will be listed on [GitHub Releases](http
 - Organize books into a local bookshelf, recent reading, and user-created categories. Adding a book copies it into the bookshelf and leaves the original file untouched.
 - Collapse the reading contents panel to give the current page more room.
 - Use bookmarks and notes, book metadata and covers, adjustable typography, Chinese or English UI, light/dark/sepia themes, and configurable keyboard shortcuts.
-- Focus mode removes the reader chrome and supports a transparent or sampled desktop-color background. Hold the configurable window-control key (Alt by default) to show its outline and temporarily move or resize it.
+- Focus mode removes the reader chrome and supports a transparent or sampled desktop-color background. Hold the configurable window-control key (Alt by default) to show its outline and temporarily move or resize it; a separate shortcut toggles between 0% and 100% background opacity.
 - Resume reading from the last saved position. The app does not upload book content or local state.
 
 ## Run or build from source (Windows)
@@ -33,10 +33,10 @@ py -3.12 -m venv .venv
 To build a portable onedir package:
 
 ```powershell
-.\scripts\build.ps1 -OutputRoot dist/releases/0.1.3
+.\scripts\build.ps1 -OutputRoot dist/releases/0.1.4
 ```
 
-The executable and its required runtime files are written to `dist/releases/0.1.3/QuietReader/`.
+The executable and its required runtime files are written to `dist/releases/0.1.4/QuietReader/`.
 
 ## Supported formats and limits
 

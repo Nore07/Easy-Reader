@@ -104,6 +104,7 @@ class Settings:
     next_chapter_key: str = "Ctrl+PgDown"
     previous_chapter_key: str = "Ctrl+PgUp"
     focus_key: str = "F10"
+    focus_opacity_key: str = "F9"
     focus_adjust_key: str = "Alt"
 
     @classmethod
@@ -139,6 +140,12 @@ class Settings:
         if isinstance(raw.get("font_family"), str) and 0 < len(raw["font_family"]) <= 100:
             result.font_family = raw["font_family"]
         bindings = {key: normalize_binding(raw.get(key, getattr(result, key))) for key in BINDING_FIELDS}
+        if not bindings["focus_opacity_key"] or bindings["focus_opacity_key"] in {
+            value for key, value in bindings.items() if key != "focus_opacity_key"
+        }:
+            used = {value for key, value in bindings.items() if key != "focus_opacity_key"}
+            candidates = [f"F{number}" for number in (*range(9, 25), *range(8, 0, -1))]
+            bindings["focus_opacity_key"] = next((candidate for candidate in candidates if candidate not in used), "F9")
         if "emergency_key" not in raw:
             used = {value for key, value in bindings.items() if key != "emergency_key"}
             bindings["emergency_key"] = next(key for key in ("Ctrl+Alt+Q", "Ctrl+Shift+Q", "Ctrl+Alt+Shift+Q", "Ctrl+Alt+F9", "Ctrl+Alt+F8") if key not in used)

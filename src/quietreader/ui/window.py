@@ -157,6 +157,7 @@ class MainWindow(QMainWindow):
         self.closed = False
         self.focus_mode = False
         self.sidebar_collapsed = False
+        self._focus_opacity_override = None
         self._focus_adjust_active = False
         self._focus_adjust_drag = None
         self._focus_system_drag_active = False
@@ -296,7 +297,7 @@ class MainWindow(QMainWindow):
         heading_layout.addWidget(self.sidebar_title)
         heading_layout.addStretch(1)
         self.sidebar_toggle = self._window_control("<<<", self.toggle_sidebar, "收起目录栏", "sidebarToggle")
-        self.sidebar_toggle.setFixedSize(34, 26)
+        self.sidebar_toggle.setFixedSize(22, 20)
         heading_layout.addWidget(self.sidebar_toggle)
         side.addWidget(heading)
         self.reading_tabs = QTabWidget()
@@ -428,6 +429,9 @@ class MainWindow(QMainWindow):
         self.focus_shortcut = QShortcut(QKeySequence(self.settings.focus_key), self)
         self.focus_shortcut.activated.connect(self.toggle_focus)
         self.focus_shortcut.setAutoRepeat(False)
+        self.focus_opacity_shortcut = QShortcut(QKeySequence(self.settings.focus_opacity_key), self)
+        self.focus_opacity_shortcut.activated.connect(self.toggle_focus_opacity)
+        self.focus_opacity_shortcut.setAutoRepeat(False)
         self.escape_shortcut = QShortcut(QKeySequence("Esc"), self)
         self.escape_shortcut.activated.connect(lambda: self.toggle_focus() if self.focus_mode else None)
         self.escape_shortcut.setEnabled(False)
@@ -1095,7 +1099,7 @@ class MainWindow(QMainWindow):
             self.shelf_button.setChecked(not reading_active)
         if hasattr(self, "sidebar"):
             if reading_active and not self.focus_mode:
-                width = 58 if self.sidebar_collapsed else max(150, min(220, int(self.width() * 0.30)))
+                width = 46 if self.sidebar_collapsed else max(150, min(220, int(self.width() * 0.30)))
                 self.sidebar.setFixedWidth(width)
             self.sidebar.setVisible(reading_active and not self.focus_mode)
 
@@ -1171,6 +1175,7 @@ class MainWindow(QMainWindow):
             self._pre_focus_maximized = self.isMaximized()
             self._chrome_visibility = {widget: not widget.isHidden() for widget in self.chrome_widgets}
         self._set_focus_adjust_active(False)
+        self._focus_opacity_override = None
         self.focus_mode = entering
         self.reader.focus_mode = entering
         self.setMinimumSize(180 if entering else 380, 100 if entering else 360)
@@ -1184,6 +1189,13 @@ class MainWindow(QMainWindow):
         self.raise_()
         self.activateWindow()
         self.reader.setFocus()
+
+    def toggle_focus_opacity(self):
+        if not self.focus_mode:
+            return
+        current = self.settings.opacity if self._focus_opacity_override is None else self._focus_opacity_override
+        self._focus_opacity_override = 0.0 if current > 0 else 1.0
+        self._apply_window_style()
 
     def t(self, source, **values):
         return tr(source, self.settings.language, **values)
@@ -1253,7 +1265,16 @@ class MainWindow(QMainWindow):
         self.set_status(self.status_source[0], **self.status_source[1])
 
     def _apply_window_style(self):
-        alpha = round(self.settings.opacity * 255) if self.focus_mode else 255
+        if self.focus_mode:
+            opacity = self.settings.opacity if self._focus_opacity_override is None else self._focus_opacity_override
+            alpha = round(opacity * 255)
+            if self._focus_adjust_active:
+                # Windows passes mouse input through layered-window pixels whose
+                # alpha is zero. A one-step alpha keeps the transparent surface
+                # hit-testable only while its adjustment key is held.
+                alpha = max(1, alpha)
+        else:
+            alpha = 255
         background_color = self.settings.background_color if self.focus_mode else ""
         self.setStyleSheet(stylesheet(
             colors(self.settings.theme, background_color), alpha,
@@ -1283,6 +1304,7 @@ class MainWindow(QMainWindow):
         self.eyebrow.setVisible(self.width() >= 700 and not self.focus_mode)
         self.focus_button.setChecked(self.focus_mode)
         self.focus_shortcut.setKey(QKeySequence(settings.focus_key))
+        self.focus_opacity_shortcut.setKey(QKeySequence(settings.focus_opacity_key))
         self.visibility_shortcut.setKey(QKeySequence(settings.hotkey))
         self.emergency_shortcut.setKey(QKeySequence(settings.emergency_key))
         self.escape_shortcut.setEnabled(self.focus_mode)

@@ -57,8 +57,8 @@ def stylesheet(palette, alpha=255, borderless=False, resize_outline=False):
     QPushButton#windowControl {{ color: {c['muted']}; background: transparent; border: none; padding: 0; min-height: 0; border-radius: 5px; font-size: 17px; }}
     QPushButton#windowControl:hover {{ color: {c['ink']}; background: {c['button']}; }}
     QPushButton#windowClose:hover {{ color: #ffffff; background: #c7463b; }}
-    QPushButton#sidebarToggle {{ color: {c['muted']}; background: transparent; border: none; padding: 0; min-height: 0; border-radius: 4px; font-size: 10px; font-weight: 600; }}
-    QPushButton#sidebarToggle:hover {{ color: {c['ink']}; background: {c['button']}; }}
+    QPushButton#sidebarToggle {{ color: {c['muted']}; background: transparent; border: none; padding: 0; min-height: 0; border-radius: 0; font-size: 8px; font-weight: 600; }}
+    QPushButton#sidebarToggle:hover {{ color: {c['ink']}; background: transparent; }}
     QPushButton#pageNav {{ color: {c['muted']}; background: transparent; border: 1px solid transparent; padding: 6px 16px; min-height: 20px; font-weight: 500; }}
     QPushButton#pageNav:hover {{ color: {c['ink']}; background: {c['button']}; }}
     QPushButton#pageNav:checked {{ color: {c['ink']}; background: {c['paper']}; border-color: {c['line']}; font-weight: 600; }}

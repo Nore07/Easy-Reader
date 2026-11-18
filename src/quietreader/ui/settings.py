@@ -119,6 +119,7 @@ class SettingsDialog(QDialog):
             ("next_chapter_key", "下一章（正文聚焦时）"),
             ("previous_chapter_key", "上一章（正文聚焦时）"),
             ("focus_key", "切换专注模式"),
+            ("focus_opacity_key", "切换专注模式透明度"),
             ("hotkey", "显示 / 隐藏快捷键"),
             ("emergency_key", "紧急退出快捷键"),
         ]:
@@ -131,6 +132,7 @@ class SettingsDialog(QDialog):
         self.note("点击修改，然后按下一个按键或组合键。Esc 取消录入。\nEsc 固定退出专注模式；添加书籍、配置和复制的快捷键保留。")
         self.note("PageUp / PageDown 翻页，Ctrl+PageUp / Ctrl+PageDown 切换章节；两组按键都可以修改。")
         self.note("专注模式仅显示正文，F10（可修改）或 Esc 退出，也可从托盘或正文右键菜单退出。")
+        self.note("专注模式下按快捷键在 0% 和 100% 背景透明度间切换，默认 F9；调整键按住期间，全透明背景会临时增加到 1/255 以接收鼠标操作。")
         self.note("同一按键切换隐藏和显示。启用全局快捷键后，窗口隐藏或失去焦点时也可使用。\n紧急退出直接关闭程序，不隐藏到托盘，也不等待后台导入；会尝试保存当前位置。")
         self.buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Save | QDialogButtonBox.StandardButton.Cancel | QDialogButtonBox.StandardButton.RestoreDefaults)
         for role, source in [(QDialogButtonBox.StandardButton.Save, "保存配置"), (QDialogButtonBox.StandardButton.Cancel, "取消"), (QDialogButtonBox.StandardButton.RestoreDefaults, "恢复默认")]:
