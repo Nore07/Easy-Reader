@@ -26,6 +26,22 @@ dist/
 .DS_Store
 Thumbs.db
 
+# Local development material (kept in this checkout, not part of the public app)
+/.agents/
+/AGENTS.md
+/tests/
+/QuietReader_*.md
+/docs/anyreader-verification.md
+/docs/decisions/
+/docs/plans/
+/docs/validation.md
+/requirements-lock.txt
+/requirements-dev.txt
+/requirements-dev-lock.txt
+/scripts/*_smoke.py
+/scripts/packaged_smoke.py
+/scripts/validate-codex-skills.mjs
+
 # Local output
 *.log
 node_modules/
