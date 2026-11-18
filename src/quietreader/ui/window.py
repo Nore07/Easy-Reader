@@ -6,7 +6,7 @@ import os
 from PySide6.QtCore import QObject, QPoint, QRunnable, QThreadPool, Qt, QTimer, Signal
 from PySide6.QtGui import QAction, QColor, QGuiApplication, QIcon, QKeySequence, QPainter, QPen, QPixmap, QPolygon, QShortcut
 from PySide6.QtWidgets import (
-    QApplication, QComboBox, QDialog, QFileDialog, QHBoxLayout, QLabel, QInputDialog,
+    QApplication, QComboBox, QDialog, QFileDialog, QHBoxLayout, QLabel, QInputDialog, QMessageBox,
     QListWidget, QListWidgetItem, QMainWindow, QMenu, QPushButton,
     QSizeGrip, QSlider, QSystemTrayIcon, QTabWidget, QVBoxLayout, QWidget,
 )
@@ -22,7 +22,9 @@ from quietreader.ui.theme import colors, stylesheet
 from quietreader.i18n import tr, install_qt_translator
 from quietreader.ui.layout_panel import LayoutPanel
 from quietreader.ui.book_info import BookInfoPanel
-from quietreader.persistence.store import MAX_BOOKMARKS, MAX_BOOKMARK_NOTE
+from quietreader.persistence.store import MAX_BOOKMARKS, MAX_BOOKMARK_NOTE, MAX_BOOK_RECORDS
+from quietreader.library.shelf import ShelfError, ShelfManager, UNCLASSIFIED, book_id_for_path
+from quietreader.ui.shelf import ShelfPanel
 
 
 def book_icon():
@@ -84,6 +86,7 @@ class MainWindow(QMainWindow):
     def __init__(self, store, enable_system=True):
         super().__init__()
         self.store = store
+        self.shelf_manager = ShelfManager(store.path.parent)
         self.settings = Settings.from_dict(store.state["settings"])
         self.enable_system = enable_system
         self.book = None
@@ -94,7 +97,7 @@ class MainWindow(QMainWindow):
         self.closed = False
         self.focus_mode = False
         self._chrome_visibility = {}
-        self.status_source = ("离线优先。打开文件即可开始阅读。", {})
+        self.status_source = ("离线优先。添加书籍即可开始阅读。", {})
         self.sidebar_requested = True
         self.sidebar_manual = False
         self.tray = None
@@ -162,9 +165,9 @@ class MainWindow(QMainWindow):
         self.drag_handle.setAccessibleName("拖动浮窗")
         self.drag_handle.setFixedWidth(32)
         top.addWidget(self.drag_handle)
-        self.open_button = self._button("打开", self.choose_file)
+        self.open_button = self._button("添加书籍", self.choose_file)
         self.open_button.setObjectName("primary")
-        self.open_button.setToolTip("打开本地 TXT / EPUB · Ctrl+O")
+        self.open_button.setToolTip("添加本地 TXT / EPUB 到书架 · Ctrl+O")
         top.addWidget(self.open_button)
         top.addWidget(self._button("排版", self.show_layout_panel))
         top.addWidget(self._button("偏好", self.show_settings))
@@ -177,7 +180,7 @@ class MainWindow(QMainWindow):
         tools_widget = QWidget()
         tools = QHBoxLayout(tools_widget)
         tools.setContentsMargins(0, 0, 0, 0)
-        tools.addWidget(self._button("目录 / 最近", self.toggle_sidebar))
+        tools.addWidget(self._button("阅读 / 书架", self.toggle_sidebar))
         self.float_button = self._button("浮窗", self.toggle_floating, True)
         tools.addWidget(self.float_button)
         self.pin_button = self._button("置顶", self.toggle_pin, True)
@@ -203,26 +206,15 @@ class MainWindow(QMainWindow):
         side.setContentsMargins(10, 12, 10, 12)
         side.addWidget(self._label("我的阅读", "eyebrow"))
         tabs = self.tabs = QTabWidget()
+        reading_module = QWidget()
+        reading_module_layout = QVBoxLayout(reading_module)
+        reading_module_layout.setContentsMargins(0, 0, 0, 0)
+        self.reading_tabs = QTabWidget()
         self.chapters = QListWidget()
         self.chapters.setAccessibleName("书籍目录")
         self.chapters.itemActivated.connect(self._chapter_activated)
         self.chapters.itemClicked.connect(self._chapter_activated)
-        self.recent = QListWidget()
-        self.recent.setAccessibleName("最近阅读")
-        self.recent.itemActivated.connect(self._recent_activated)
-        self.recent.itemClicked.connect(self._recent_activated)
-        self.pages = QListWidget()
-        self.pages.setAccessibleName("书中页码")
-        self.pages.itemActivated.connect(self._page_activated)
-        self.pages.itemClicked.connect(self._page_activated)
-        self.landmarks = QListWidget()
-        self.landmarks.setAccessibleName("书中位置")
-        self.landmarks.itemActivated.connect(self._page_activated)
-        self.landmarks.itemClicked.connect(self._page_activated)
-        tabs.addTab(self.chapters, "目录")
-        tabs.addTab(self.recent, "最近")
-        tabs.addTab(self.pages, "页码")
-        tabs.addTab(self.landmarks, "位置")
+        self.reading_tabs.addTab(self.chapters, "目录")
         bookmark_panel = QWidget()
         bookmark_layout = QVBoxLayout(bookmark_panel)
         self.bookmarks = QListWidget()
@@ -238,11 +230,32 @@ class MainWindow(QMainWindow):
         bookmark_actions.addWidget(self.bookmark_note_button)
         bookmark_actions.addWidget(self.bookmark_remove_button)
         bookmark_layout.addLayout(bookmark_actions)
-        tabs.addTab(bookmark_panel, "书签")
+        self.reading_tabs.addTab(bookmark_panel, "书签")
+        self.pages = QListWidget()
+        self.pages.setAccessibleName("书中页码")
+        self.pages.itemActivated.connect(self._page_activated)
+        self.pages.itemClicked.connect(self._page_activated)
+        self.reading_tabs.addTab(self.pages, "页码")
+        self.landmarks = QListWidget()
+        self.landmarks.setAccessibleName("书中位置")
+        self.landmarks.itemActivated.connect(self._page_activated)
+        self.landmarks.itemClicked.connect(self._page_activated)
+        self.reading_tabs.addTab(self.landmarks, "位置")
+        self.reading_tabs.setTabVisible(2, False)
+        self.reading_tabs.setTabVisible(3, False)
+        reading_module_layout.addWidget(self.reading_tabs)
+        tabs.addTab(reading_module, "阅读")
+        self.shelf = ShelfPanel()
+        self.shelf.open_requested.connect(self.open_shelf_book)
+        self.shelf.move_requested.connect(self.move_shelf_book)
+        self.shelf.remove_requested.connect(self._confirm_remove_shelf_book)
+        self.shelf.create_category_requested.connect(self.prompt_create_shelf_category)
+        self.shelf.delete_category_requested.connect(self._confirm_delete_shelf_category)
+        tabs.addTab(self.shelf, "书架")
+        self.recent = self.shelf.recent
         self.book_info = BookInfoPanel()
         tabs.addTab(self.book_info, "资料")
-        tabs.setTabVisible(4, False)
-        tabs.setTabVisible(5, False)
+        tabs.setTabVisible(2, False)
         side.addWidget(tabs)
         side.addWidget(self._label("本地阅读 · 无需联网", "status"))
         body.addWidget(self.sidebar)
@@ -293,7 +306,7 @@ class MainWindow(QMainWindow):
         bottom_widget = QWidget()
         bottom = QHBoxLayout(bottom_widget)
         bottom.setContentsMargins(0, 0, 0, 0)
-        self.status = self._label("离线优先。打开文件即可开始阅读。", "status")
+        self.status = self._label("离线优先。添加书籍即可开始阅读。", "status")
         self.status.setWordWrap(True)
         bottom.addWidget(self.status, 1)
         self.grip = QSizeGrip(self)
@@ -338,7 +351,7 @@ class MainWindow(QMainWindow):
             self.tray = QSystemTrayIcon(self.windowIcon(), self)
             self.tray.setToolTip("QuietReader · 静读")
             menu = QMenu(self)
-            for label, callback in [("显示 / 隐藏", self.toggle_visible), ("打开本地文件…", self.choose_file), ("阅读偏好…", self.show_settings)]:
+            for label, callback in [("显示 / 隐藏", self.toggle_visible), ("添加书籍…", self.choose_file), ("阅读偏好…", self.show_settings)]:
                 action = QAction(label, self)
                 action.setProperty("translation_source", label)
                 action.triggered.connect(callback)
@@ -361,9 +374,285 @@ class MainWindow(QMainWindow):
         if self.loading:
             return
         self.reveal()
-        file, _ = QFileDialog.getOpenFileName(self, self.t("打开本地书籍"), "", self.t("阅读文件 (*.txt *.epub);;TXT (*.txt);;EPUB (*.epub)"), options=QFileDialog.Option.DontUseNativeDialog)
-        if file:
-            self.load_path(file)
+        files, _ = QFileDialog.getOpenFileNames(self, self.t("添加本地书籍"), "", self.t("阅读文件 (*.txt *.epub);;TXT (*.txt);;EPUB (*.epub)"), options=QFileDialog.Option.DontUseNativeDialog)
+        if files:
+            self.add_book_paths(files)
+
+    def add_book_paths(self, paths, open_after=False):
+        if self.loading or self.store.read_only:
+            if self.store.read_only:
+                self.set_status("保存数据来自不支持的版本。已保护原文件，本次不会保存更改。")
+            return []
+        added = []
+        new_count = 0
+        try:
+            for source in paths:
+                try:
+                    source_path = Path(source).expanduser().resolve(strict=True)
+                except (OSError, RuntimeError):
+                    raise ShelfError("书籍文件不存在或无法访问。") from None
+                source_key = str(source_path).casefold()
+                existing = next((
+                    record for record in self.store.state["books"]
+                    if str(record.get("source_path", "")).casefold() == source_key
+                ), None)
+                if existing and self.shelf_manager.is_managed(existing["path"]):
+                    added.append(existing)
+                    continue
+                if existing:
+                    managed_path = self.shelf_manager.add_book(source_path)
+                    self._remap_shelf_book(existing, managed_path)
+                    existing["source_path"] = str(source_path)
+                    added.append(existing)
+                    new_count += 1
+                    continue
+                existing = next((
+                    record for record in self.store.state["books"]
+                    if str(Path(record["path"]).expanduser().resolve()).casefold() == source_key
+                ), None)
+                if existing and self.shelf_manager.is_managed(existing["path"]):
+                    added.append(existing)
+                    continue
+                managed_path = self.shelf_manager.add_book(source_path)
+                if existing:
+                    self._remap_shelf_book(existing, managed_path)
+                    existing["source_path"] = str(source_path)
+                    added.append(existing)
+                    new_count += 1
+                    continue
+                book_id = book_id_for_path(managed_path)
+                record = {
+                    "id": book_id,
+                    "path": str(managed_path),
+                    "title": managed_path.stem,
+                    "author": "",
+                    "encoding": "EPUB" if managed_path.suffix.lower() == ".epub" else "auto",
+                    "last_read": "",
+                    "source_path": str(source_path),
+                }
+                current = next((item for item in self.store.state["books"] if item["id"] == book_id), None)
+                if current:
+                    current.update(record)
+                    record = current
+                else:
+                    self.store.state["books"].insert(0, record)
+                    self.store.state["books"] = self.store.state["books"][:MAX_BOOK_RECORDS]
+                new_count += 1
+                added.append(record)
+        except (OSError, ShelfError) as error:
+            self._refresh_shelf()
+            self.save_state()
+            self._set_shelf_error(error)
+            return added
+        self._refresh_shelf()
+        self.save_state()
+        if new_count:
+            self.set_status("已添加 {count} 本书到书架。", count=new_count)
+        elif added:
+            self.set_status("所选书籍已在书架中。")
+        if open_after and added:
+            record = added[-1]
+            encoding = record.get("encoding", "auto")
+            self.load_path(record["path"], encoding if encoding in ENCODINGS else "auto")
+        return added
+
+    def open_shelf_book(self, book_id):
+        record = next((item for item in self.store.state["books"] if item["id"] == book_id), None)
+        if record:
+            encoding = record.get("encoding", "auto")
+            self.load_path(record["path"], encoding if encoding in ENCODINGS else "auto")
+
+    def create_shelf_category(self, name):
+        if self.store.read_only:
+            self.set_status("保存数据来自不支持的版本。已保护原文件，本次不会保存更改。")
+            return None
+        if self.loading:
+            return None
+        try:
+            path = self.shelf_manager.create_category(name)
+        except ShelfError as error:
+            self._set_shelf_error(error)
+            return None
+        self._refresh_shelf()
+        self.save_state()
+        self.set_status("已创建分类“{name}”。", name=path.name)
+        return path
+
+    def prompt_create_shelf_category(self):
+        name, accepted = QInputDialog.getText(self, self.t("新建分类"), self.t("分类名称"))
+        if accepted:
+            self.create_shelf_category(name)
+
+    def _remap_shelf_book(self, record, new_path):
+        old_id = record["id"]
+        new_id = book_id_for_path(new_path)
+        record["id"] = new_id
+        record["path"] = str(new_path)
+        positions = self.store.state.setdefault("positions", {})
+        bookmarks = self.store.state.setdefault("bookmarks", {})
+        for mapping in (positions, bookmarks):
+            if old_id in mapping:
+                previous = mapping.pop(old_id)
+                mapping.setdefault(new_id, previous)
+        if self.store.state.get("last_book") == old_id:
+            self.store.state["last_book"] = new_id
+        if self.book and self.book.id == old_id:
+            self.book.id = new_id
+            self.book.path = str(new_path)
+        return new_id
+
+    def move_shelf_book(self, book_id, category):
+        if self.store.read_only or self.loading:
+            if self.store.read_only:
+                self.set_status("保存数据来自不支持的版本。已保护原文件，本次不会保存更改。")
+            return
+        record = next((item for item in self.store.state["books"] if item["id"] == book_id), None)
+        if record is None:
+            return
+        try:
+            self.save_state()
+            was_managed = self.shelf_manager.is_managed(record["path"])
+            old_path = record["path"]
+            new_path = self.shelf_manager.move_book(record["path"], category)
+        except (OSError, ShelfError) as error:
+            self._set_shelf_error(error)
+            return
+        self._remap_shelf_book(record, new_path)
+        if not was_managed:
+            record.setdefault("source_path", old_path)
+        self._refresh_shelf()
+        self.save_state()
+        self.set_status("已将《{title}》移动到“{category}”。", title=record["title"], category=self.t(category) if category == UNCLASSIFIED else category)
+
+    def remove_shelf_book(self, book_id):
+        if self.store.read_only or self.loading:
+            if self.store.read_only:
+                self.set_status("保存数据来自不支持的版本。已保护原文件，本次不会保存更改。")
+            return False
+        record = next((item for item in self.store.state["books"] if item["id"] == book_id), None)
+        if record is None:
+            return False
+        if self.book and self.book.id == book_id:
+            self.save_state()
+        try:
+            self.shelf_manager.remove_book(record["path"])
+        except (OSError, ShelfError) as error:
+            self._set_shelf_error(error)
+            return False
+        self.store.state["books"] = [item for item in self.store.state["books"] if item["id"] != book_id]
+        self.store.state.get("positions", {}).pop(book_id, None)
+        self.store.state.get("bookmarks", {}).pop(book_id, None)
+        if self.store.state.get("last_book") == book_id:
+            self.store.state["last_book"] = ""
+        if self.book and self.book.id == book_id:
+            self._clear_current_book()
+        self._refresh_shelf()
+        self.save_state()
+        self.set_status("已从书架移除《{title}》。", title=record["title"])
+        return True
+
+    def _confirm_remove_shelf_book(self, book_id):
+        record = next((item for item in self.store.state["books"] if item["id"] == book_id), None)
+        if not record:
+            return
+        answer = QMessageBox.question(
+            self, self.t("从书架移除"),
+            self.t("确定从书架移除《{title}》吗？书架中的副本会被删除。", title=record["title"]),
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if answer == QMessageBox.StandardButton.Yes:
+            self.remove_shelf_book(book_id)
+
+    def _confirm_delete_shelf_category(self, category):
+        dialog = QMessageBox(self)
+        dialog.setWindowTitle(self.t("删除分类"))
+        dialog.setText(self.t("删除分类“{name}”时，如何处理其中的书籍？", name=category))
+        delete_books = dialog.addButton(self.t("删除分类及书籍"), QMessageBox.ButtonRole.DestructiveRole)
+        keep_books = dialog.addButton(self.t("仅删除分类，书籍移回未分类"), QMessageBox.ButtonRole.AcceptRole)
+        cancel = dialog.addButton(self.t("取消"), QMessageBox.ButtonRole.RejectRole)
+        dialog.setDefaultButton(cancel)
+        dialog.setEscapeButton(cancel)
+        dialog.exec()
+        if dialog.clickedButton() is delete_books:
+            self.delete_shelf_category(category, delete_books=True)
+        elif dialog.clickedButton() is keep_books:
+            self.delete_shelf_category(category, delete_books=False)
+
+    def delete_shelf_category(self, category, delete_books=False):
+        if self.store.read_only or self.loading:
+            if self.store.read_only:
+                self.set_status("保存数据来自不支持的版本。已保护原文件，本次不会保存更改。")
+            return False
+        self.save_state()
+        try:
+            mapping = self.shelf_manager.delete_category(category, delete_books)
+        except (OSError, ShelfError) as error:
+            self._set_shelf_error(error)
+            return False
+        for record in list(self.store.state["books"]):
+            old_path = Path(record["path"]).expanduser()
+            try:
+                resolved = old_path.resolve()
+            except OSError:
+                resolved = old_path
+            if resolved not in mapping:
+                continue
+            new_path = mapping[resolved]
+            if new_path is None:
+                book_id = record["id"]
+                self.store.state["books"].remove(record)
+                self.store.state.get("positions", {}).pop(book_id, None)
+                self.store.state.get("bookmarks", {}).pop(book_id, None)
+                if self.store.state.get("last_book") == book_id:
+                    self.store.state["last_book"] = ""
+                if self.book and self.book.id == book_id:
+                    self._clear_current_book()
+            else:
+                self._remap_shelf_book(record, new_path)
+        self._refresh_shelf()
+        self.save_state()
+        self.set_status("已删除分类“{name}”。", name=category)
+        return True
+
+    def _clear_current_book(self):
+        if self.focus_mode:
+            self.toggle_focus()
+        self.book = None
+        self.section_index = 0
+        self.reader.set_text("")
+        self.book_title.setText(self.t("一本书，一处安静"))
+        self.book_title.setProperty("translation_source", "一本书，一处安静")
+        self.chapter_title.setText(self.t("从你的本地书籍开始"))
+        self.chapter_title.setProperty("translation_source", "从你的本地书籍开始")
+        self.setWindowTitle("QuietReader · 静读")
+        self.chapters.clear()
+        self.pages.clear()
+        self.landmarks.clear()
+        self.bookmarks.clear()
+        self.book_info.set_book(None, self.settings.language)
+        self.progress.setValue(0)
+        self.page_label.setText("PageUp / PageDown")
+        self.page_label.setProperty("translation_source", None)
+        self.reading_tabs.setTabVisible(2, False)
+        self.reading_tabs.setTabVisible(3, False)
+        self.encoding_button.hide()
+        self.encoding_bar.hide()
+        self._update_progress()
+        self._refresh_bookmarks()
+
+    def _refresh_shelf(self):
+        if not hasattr(self, "shelf"):
+            return
+        self.shelf.refresh(
+            self.store.state["books"], self.shelf_manager.categories(),
+            self.shelf_manager.category_for_path, self.settings.language,
+        )
+
+    def _recent_activated(self, item):
+        book_id = item.data(Qt.ItemDataRole.UserRole)
+        if book_id:
+            self.open_shelf_book(book_id)
 
     def load_path(self, path, encoding="auto"):
         if self.loading or self.closed:
@@ -387,8 +676,7 @@ class MainWindow(QMainWindow):
         self.book_title.setText(book.title)
         self.book_title.setProperty("translation_source", None)
         self.book_info.set_book(book, self.settings.language)
-        self.tabs.setTabVisible(4, True)
-        self.tabs.setTabVisible(5, True)
+        self.tabs.setTabVisible(2, True)
         self._refresh_bookmarks()
         self.chapters.clear()
         self.pages.clear()
@@ -413,16 +701,20 @@ class MainWindow(QMainWindow):
                 item = QListWidgetItem(entry.label)
                 item.setData(Qt.ItemDataRole.UserRole, target)
                 self.landmarks.addItem(item)
-        self.tabs.setTabVisible(2, self.pages.count() > 0)
-        self.tabs.setTabVisible(3, self.landmarks.count() > 0)
+        self.reading_tabs.setTabVisible(2, self.pages.count() > 0)
+        self.reading_tabs.setTabVisible(3, self.landmarks.count() > 0)
         self.tabs.setCurrentIndex(0)
+        self.reading_tabs.setCurrentIndex(0)
         raw = self.store.state["positions"].get(book.id, {})
         index, offset = restore_position(book.sections, Position(raw.get("section_id", ""), raw.get("offset", 0)))
         self.open_section(index, offset)
-        record = {"id": book.id, "path": book.path, "title": book.title, "author": book.author, "encoding": book.encoding, "last_read": datetime.now(timezone.utc).isoformat()}
-        self.store.state["books"] = [record] + [b for b in self.store.state["books"] if b["id"] != book.id][:49]
+        record = next((item for item in self.store.state["books"] if item["id"] == book.id), None)
+        if record is None:
+            record = {"id": book.id, "path": book.path, "title": book.title, "author": book.author, "encoding": book.encoding, "last_read": ""}
+        record.update({"id": book.id, "path": book.path, "title": book.title, "author": book.author, "encoding": book.encoding, "last_read": datetime.now(timezone.utc).isoformat()})
+        self.store.state["books"] = [record] + [item for item in self.store.state["books"] if item["id"] != book.id][:MAX_BOOK_RECORDS - 1]
         self.store.state["last_book"] = book.id
-        self._refresh_recent()
+        self._refresh_shelf()
         self.set_status("{encoding} · {count} 个章节 / 分段 · 进度自动保存{author}", encoding=book.encoding, count=len(book.sections), author=f" · {book.author}" if book.author else "")
         self.encoding_bar.hide()
         self.encoding_button.setVisible(book.encoding != "EPUB")
@@ -601,11 +893,6 @@ class MainWindow(QMainWindow):
     def _chapter_activated(self, item):
         self._activate_navigation_item(item)
 
-    def _recent_activated(self, item):
-        record = item.data(Qt.ItemDataRole.UserRole)
-        encoding = record.get("encoding", "auto")
-        self.load_path(record["path"], encoding if encoding in ENCODINGS else "auto")
-
     def _refresh_bookmarks(self):
         self.bookmarks.clear()
         if not self.book:
@@ -647,7 +934,8 @@ class MainWindow(QMainWindow):
         records.insert(0, record)
         self._refresh_bookmarks()
         self.bookmarks.setCurrentRow(0)
-        self.tabs.setCurrentIndex(4)
+        self.tabs.setCurrentIndex(0)
+        self.reading_tabs.setCurrentIndex(1)
         self.set_status("书签已添加。")
         self.schedule_save()
 
@@ -700,11 +988,7 @@ class MainWindow(QMainWindow):
         self.reader.setFocus()
 
     def _refresh_recent(self):
-        self.recent.clear()
-        for record in self.store.state["books"]:
-            item = QListWidgetItem(record["title"])
-            item.setData(Qt.ItemDataRole.UserRole, record)
-            self.recent.addItem(item)
+        self._refresh_shelf()
 
     def toggle_sidebar(self):
         self.sidebar_manual = True
@@ -757,6 +1041,29 @@ class MainWindow(QMainWindow):
         self.status.setProperty("translation_source", None)
         self.status.setText(self.t(source, **values))
 
+    def _set_shelf_error(self, error):
+        message = str(error)
+        dynamic = (
+            ("无法创建分类：", "无法创建分类：{error}"),
+            ("复制书籍失败：", "复制书籍失败：{error}"),
+            ("移动书籍失败：", "移动书籍失败：{error}"),
+            ("删除书架书籍失败：", "删除书架书籍失败：{error}"),
+            ("删除分类失败：", "删除分类失败：{error}"),
+            ("移动分类书籍失败：", "移动分类书籍失败：{error}"),
+        )
+        for prefix, source in dynamic:
+            if message.startswith(prefix):
+                self.set_status(source, error=message[len(prefix):])
+                return
+        rollback_prefix = "分类移动失败，回滚也未完成："
+        if message.startswith(rollback_prefix):
+            details = message[len(rollback_prefix):]
+            reason, separator, rollback = details.partition("; ")
+            if separator:
+                self.set_status("分类移动失败，回滚也未完成：{error}; {rollback}", error=reason, rollback=rollback)
+                return
+        self.set_status(message)
+
     def _retranslate(self):
         install_qt_translator(QApplication.instance(), self.settings.language)
         for widget in self.findChildren(QWidget) + self.findChildren(QAction):
@@ -771,12 +1078,13 @@ class MainWindow(QMainWindow):
                         widget.setProperty(key, original)
                     if original:
                         getattr(widget, setter)(self.t(original))
-        self.tabs.setTabText(0, self.t("目录"))
-        self.tabs.setTabText(1, self.t("最近"))
-        self.tabs.setTabText(2, self.t("页码"))
-        self.tabs.setTabText(3, self.t("位置"))
-        self.tabs.setTabText(4, self.t("书签"))
-        self.tabs.setTabText(5, self.t("资料"))
+        self.open_button.setText(self.t("添加书籍"))
+        self.tabs.setTabText(0, self.t("阅读"))
+        self.tabs.setTabText(1, self.t("书架"))
+        self.tabs.setTabText(2, self.t("资料"))
+        for index, source in enumerate(("目录", "书签", "页码", "位置")):
+            self.reading_tabs.setTabText(index, self.t(source))
+        self.shelf.retranslate(self.settings.language)
         self.book_info.set_book(self.book, self.settings.language)
         self._sync_chapter_button_labels()
         self.encoding.setItemText(0, self.t("自动识别"))

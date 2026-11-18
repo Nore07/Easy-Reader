@@ -45,6 +45,17 @@ def test_atomic_state_and_backup_recovery(tmp_path):
     assert recovered.warning
 
 
+def test_library_catalog_keeps_more_than_old_recent_history_limit(tmp_path):
+    store = StateStore(tmp_path)
+    store.state["books"] = [
+        {"id": str(index), "path": f"book-{index}.txt", "title": f"Book {index}"}
+        for index in range(120)
+    ]
+    store.save()
+
+    assert len(StateStore(tmp_path).state["books"]) == 120
+
+
 def test_unknown_schema_is_preserved(tmp_path):
     path = tmp_path / "state.json"
     path.write_text(json.dumps({"version": 999}), encoding="utf-8")

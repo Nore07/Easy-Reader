@@ -9,6 +9,7 @@ from quietreader.domain.models import Settings
 VERSION = 1
 MAX_BOOKMARKS = 200
 MAX_BOOKMARK_NOTE = 1000
+MAX_BOOK_RECORDS = 500
 
 
 def _clean_bookmarks(raw):
@@ -86,7 +87,7 @@ class StateStore:
                     raise ValueError("invalid records")
                 clean = initial_state()
                 clean["settings"] = Settings.from_dict(value.get("settings")).to_dict()
-                clean["books"] = [b for b in books[:100] if isinstance(b, dict) and all(isinstance(b.get(k), str) for k in ("id", "path", "title"))]
+                clean["books"] = [b for b in books[:MAX_BOOK_RECORDS] if isinstance(b, dict) and all(isinstance(b.get(k), str) for k in ("id", "path", "title"))]
                 clean["positions"] = {k: p for k, p in positions.items() if isinstance(k, str) and isinstance(p, dict) and isinstance(p.get("section_id"), str) and type(p.get("offset")) is int}
                 clean["bookmarks"] = _clean_bookmarks(value.get("bookmarks", {}))
                 clean["last_book"] = value.get("last_book", "") if isinstance(value.get("last_book", ""), str) else ""

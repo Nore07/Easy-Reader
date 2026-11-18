@@ -235,7 +235,7 @@ class PageView(QWidget):
             painter.drawText(box, Qt.AlignmentFlag.AlignCenter | Qt.TextFlag.TextWordWrap, tr("把喧闹\n留在书页之外。", self.settings.language))
             painter.setFont(QFont("Microsoft YaHei", 10))
             painter.setPen(QColor(c["muted"]))
-            painter.drawText(box.adjusted(0, 160, 0, 0), Qt.AlignmentFlag.AlignCenter, tr("打开一本 TXT 或 EPUB\n文件与进度，只保存在这台电脑。", self.settings.language))
+            painter.drawText(box.adjusted(0, 160, 0, 0), Qt.AlignmentFlag.AlignCenter, tr("添加一本 TXT 或 EPUB\n文件与进度，只保存在这台电脑。", self.settings.language))
             return
         pad = self.settings.padding
         painter.setClipRect(QRectF(pad, pad, max(1, self.width() - 2 * pad), self.page_height))

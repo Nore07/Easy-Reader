@@ -146,5 +146,6 @@ def test_book_info_shows_epub3_cover_and_retranslates_metadata(app, tmp_path):
     assert "山间来信" in window.book_info.details.text()
     window.apply_settings(window.settings.__class__(language="en"))
     assert "Title: 山间来信" in window.book_info.details.text()
-    assert window.tabs.tabText(4) == "Bookmarks"
+    assert window.tabs.tabText(0) == "Reading"
+    assert window.reading_tabs.tabText(1) == "Bookmarks"
     window.shutdown()

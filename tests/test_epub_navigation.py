@@ -37,7 +37,7 @@ def test_chapter_controls_skip_spine_chunks_and_follow_toc_and_page_links(app, t
     assert window.previous_chapter.isEnabled() is False
     assert window.next_chapter.isEnabled()
     assert isinstance(window.pages, QListWidget)
-    assert window.tabs.isTabVisible(3)
+    assert window.reading_tabs.isTabVisible(3)
     assert [window.chapters.item(i).text().strip() for i in range(window.chapters.count())] == ["第一章", "脚注"]
     window._chapter_activated(window.chapters.item(1))
     assert window.section_index == 2

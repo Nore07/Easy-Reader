@@ -1,0 +1,195 @@
+from pathlib import Path
+
+from PySide6.QtCore import Qt, Signal
+from PySide6.QtWidgets import (
+    QComboBox, QHBoxLayout, QListWidget, QListWidgetItem, QPushButton,
+    QTabWidget, QVBoxLayout, QWidget,
+)
+
+from quietreader.i18n import tr
+from quietreader.library.shelf import UNCLASSIFIED
+
+
+class ShelfPanel(QWidget):
+    add_requested = Signal()
+    open_requested = Signal(str)
+    move_requested = Signal(str, str)
+    remove_requested = Signal(str)
+    create_category_requested = Signal()
+    delete_category_requested = Signal(str)
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.language = "system"
+        self.records = []
+        self.categories = []
+        outer = QVBoxLayout(self)
+        outer.setContentsMargins(0, 0, 0, 0)
+        self.tabs = QTabWidget()
+
+        recent_page = QWidget()
+        recent_layout = QVBoxLayout(recent_page)
+        self.recent = QListWidget()
+        self.recent.setAccessibleName("最近阅读")
+        self.recent.itemActivated.connect(self._open_item)
+        recent_layout.addWidget(self.recent)
+        self.tabs.addTab(recent_page, "最近阅读")
+
+        all_page = QWidget()
+        all_layout = QVBoxLayout(all_page)
+        self.all_books = QListWidget()
+        self.all_books.setAccessibleName("所有书籍")
+        self.all_books.itemActivated.connect(self._open_item)
+        all_layout.addWidget(self.all_books)
+        all_target_layout = QHBoxLayout()
+        self.all_target = QComboBox()
+        all_target_layout.addWidget(self.all_target, 1)
+        all_layout.addLayout(all_target_layout)
+        all_actions = QHBoxLayout()
+        self.all_move = QPushButton()
+        self.all_move.clicked.connect(lambda: self._move_selected(self.all_books, self.all_target))
+        self.all_remove = QPushButton()
+        self.all_remove.clicked.connect(lambda: self._remove_selected(self.all_books))
+        all_actions.addWidget(self.all_move, 1)
+        all_actions.addWidget(self.all_remove, 1)
+        all_layout.addLayout(all_actions)
+        self.tabs.addTab(all_page, "所有书籍")
+
+        category_page = QWidget()
+        category_layout = QVBoxLayout(category_page)
+        self.category_list = QListWidget()
+        self.category_list.setAccessibleName("书籍分类")
+        self.category_list.currentRowChanged.connect(self._refresh_category_books)
+        self.category_books = QListWidget()
+        self.category_books.setAccessibleName("分类中的书籍")
+        self.category_books.itemActivated.connect(self._open_item)
+        category_layout.addWidget(self.category_list, 1)
+        category_layout.addWidget(self.category_books, 2)
+        category_actions = QHBoxLayout()
+        self.category_create = QPushButton()
+        self.category_create.clicked.connect(self.create_category_requested.emit)
+        self.category_delete = QPushButton()
+        self.category_delete.clicked.connect(self._delete_selected_category)
+        category_actions.addWidget(self.category_create)
+        category_actions.addWidget(self.category_delete)
+        category_layout.addLayout(category_actions)
+        category_target_layout = QHBoxLayout()
+        self.category_target = QComboBox()
+        category_target_layout.addWidget(self.category_target, 1)
+        category_layout.addLayout(category_target_layout)
+        category_move_actions = QHBoxLayout()
+        self.category_move = QPushButton()
+        self.category_move.clicked.connect(lambda: self._move_selected(self.category_books, self.category_target))
+        self.category_remove = QPushButton()
+        self.category_remove.clicked.connect(lambda: self._remove_selected(self.category_books))
+        category_move_actions.addWidget(self.category_move, 1)
+        category_move_actions.addWidget(self.category_remove, 1)
+        category_layout.addLayout(category_move_actions)
+        self.tabs.addTab(category_page, "分类")
+        outer.addWidget(self.tabs)
+        self.retranslate("system")
+
+    def retranslate(self, language):
+        self.language = language
+        for index, source in enumerate(("最近阅读", "所有书籍", "分类")):
+            self.tabs.setTabText(index, tr(source, language))
+        self.all_move.setText(tr("移动", language))
+        self.all_move.setToolTip(tr("移动到分类", language))
+        self.all_move.setAccessibleName(tr("移动到分类", language))
+        self.all_remove.setText(tr("移除", language))
+        self.all_remove.setToolTip(tr("从书架移除", language))
+        self.all_remove.setAccessibleName(tr("从书架移除", language))
+        self.category_create.setText(tr("新建分类", language))
+        self.category_delete.setText(tr("删除分类", language))
+        self.category_move.setText(tr("移动", language))
+        self.category_move.setToolTip(tr("移动到分类", language))
+        self.category_move.setAccessibleName(tr("移动到分类", language))
+        self.category_remove.setText(tr("移除", language))
+        self.category_remove.setToolTip(tr("从书架移除", language))
+        self.category_remove.setAccessibleName(tr("从书架移除", language))
+        self.all_books.setAccessibleName(tr("所有书籍", language))
+        self.recent.setAccessibleName(tr("最近阅读", language))
+        self.category_list.setAccessibleName(tr("书籍分类", language))
+        self.category_books.setAccessibleName(tr("分类中的书籍", language))
+        self._refresh_lists()
+
+    def refresh(self, records, categories, category_for_path, language=None):
+        if language is not None:
+            self.language = language
+        self.records = list(records)
+        self.categories = list(categories)
+        self._category_for_path = category_for_path
+        self._refresh_lists()
+
+    def _refresh_lists(self):
+        if not hasattr(self, "all_books"):
+            return
+        target_data = self.all_target.currentData() if self.all_target.count() else None
+        category_target_data = self.category_target.currentData() if self.category_target.count() else None
+        category_name = self.category_list.currentItem().data(Qt.ItemDataRole.UserRole) if self.category_list.currentItem() else UNCLASSIFIED
+        recent_records = sorted((r for r in self.records if r.get("last_read")), key=lambda r: r.get("last_read", ""), reverse=True)
+        all_records = sorted(self.records, key=lambda r: r.get("title", "").casefold())
+        self._fill(self.recent, recent_records[:100])
+        self._fill(self.all_books, all_records)
+        self.all_target.clear()
+        self.category_target.clear()
+        targets = [UNCLASSIFIED, *self.categories]
+        for combo in (self.all_target, self.category_target):
+            for name in targets:
+                combo.addItem(tr("未分类", self.language) if name == UNCLASSIFIED else name, name)
+        if target_data in targets:
+            self.all_target.setCurrentIndex(self.all_target.findData(target_data))
+        if category_target_data in targets:
+            self.category_target.setCurrentIndex(self.category_target.findData(category_target_data))
+        self.category_list.clear()
+        for name in targets:
+            item = QListWidgetItem(tr("未分类", self.language) if name == UNCLASSIFIED else name)
+            item.setData(Qt.ItemDataRole.UserRole, name)
+            self.category_list.addItem(item)
+        row = next((i for i in range(self.category_list.count()) if self.category_list.item(i).data(Qt.ItemDataRole.UserRole) == category_name), 0)
+        self.category_list.setCurrentRow(row)
+        self._refresh_category_books()
+
+    @staticmethod
+    def _fill(widget, records):
+        widget.clear()
+        for record in records:
+            item = QListWidgetItem(record.get("title") or Path(record["path"]).stem)
+            if record.get("author"):
+                item.setToolTip(f"{record['author']}\n{record['path']}")
+            else:
+                item.setToolTip(record["path"])
+            item.setData(Qt.ItemDataRole.UserRole, record.get("id", ""))
+            widget.addItem(item)
+
+    def _refresh_category_books(self, *_):
+        if not hasattr(self, "category_books"):
+            return
+        item = self.category_list.currentItem()
+        category = item.data(Qt.ItemDataRole.UserRole) if item else UNCLASSIFIED
+        records = [record for record in self.records if self._category_for_path(record["path"]) == category]
+        records.sort(key=lambda r: r.get("title", "").casefold())
+        self._fill(self.category_books, records)
+        self.category_delete.setEnabled(category != UNCLASSIFIED and category in self.categories)
+
+    def _open_item(self, item):
+        book_id = item.data(Qt.ItemDataRole.UserRole)
+        if book_id:
+            self.open_requested.emit(book_id)
+
+    def _move_selected(self, widget, target):
+        item = widget.currentItem()
+        if item is not None and target.currentData():
+            self.move_requested.emit(item.data(Qt.ItemDataRole.UserRole), target.currentData())
+
+    def _remove_selected(self, widget):
+        item = widget.currentItem()
+        if item is not None:
+            self.remove_requested.emit(item.data(Qt.ItemDataRole.UserRole))
+
+    def _delete_selected_category(self):
+        item = self.category_list.currentItem()
+        if item is not None:
+            category = item.data(Qt.ItemDataRole.UserRole)
+            if category != UNCLASSIFIED:
+                self.delete_category_requested.emit(category)

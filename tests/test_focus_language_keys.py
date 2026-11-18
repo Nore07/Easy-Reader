@@ -72,7 +72,7 @@ def test_focus_only_text_escape_and_language_preserve_position(app, tmp_path):
     book = Book("test", "unused.txt", "原书标题", sections=[Section("one", "第一章", "书籍中的文字。\n" * 400)])
     window._loaded(book)
     window.apply_settings(Settings(language="en", text_color="#ff3355", next_key="J", previous_key="K"))
-    assert window.open_button.text() == "Open"
+    assert window.open_button.text() == "Add books"
     assert window.book_title.text() == "原书标题"
     QTest.keyClick(window.reader, Qt.Key.Key_J)
     assert window.reader.page == 1
@@ -95,7 +95,7 @@ def test_focus_only_text_escape_and_language_preserve_position(app, tmp_path):
     assert not window.settings.floating
     assert window.reader.offset == anchor
     window.apply_settings(Settings(language="zh_CN"))
-    assert window.open_button.text() == "打开"
+    assert window.open_button.text() == "添加书籍"
     assert window.reader.offset == anchor
     window.shutdown()
 

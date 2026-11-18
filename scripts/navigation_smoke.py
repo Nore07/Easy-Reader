@@ -53,8 +53,8 @@ def main():
         wait_loaded(app, window)
 
         assert window.chapters.count() == 2
-        assert window.pages.count() == 1 and window.tabs.isTabVisible(2)
-        assert window.landmarks.count() == 1 and window.tabs.isTabVisible(3)
+        assert window.pages.count() == 1 and window.reading_tabs.isTabVisible(2)
+        assert window.landmarks.count() == 1 and window.reading_tabs.isTabVisible(3)
         note_index = next(i for i, section in enumerate(window.book.sections) if section.source_path == "OEBPS/Text/two.xhtml")
         first = window.book.sections[0]
         click_link(window.reader, first.links[0])
@@ -76,10 +76,11 @@ def main():
         assert window.section_index == 0
         assert window.previous_chapter.isEnabled() is False
 
-        window.tabs.setCurrentIndex(2)
+        window.tabs.setCurrentIndex(0)
+        window.reading_tabs.setCurrentIndex(2)
         QTest.qWait(80)
         window.grab().save(str(output / "epub-page-list.png"))
-        window.tabs.setCurrentIndex(0)
+        window.reading_tabs.setCurrentIndex(0)
         window.grab().save(str(output / "epub-hierarchical-toc.png"))
         window.shutdown()
     print("EPUB3 nested TOC, internal links, page-list, chapter buttons and configurable keys: PASS")

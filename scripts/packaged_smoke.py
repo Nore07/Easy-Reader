@@ -198,6 +198,10 @@ def main():
             assert process.wait(timeout=15) == 0
             state = json.loads((data / "state.json").read_text(encoding="utf-8"))
             assert state["last_book"] in state["positions"]
+            imported_record = next(record for record in state["books"] if record["id"] == state["last_book"])
+            shelf_copy = Path(imported_record["path"])
+            assert shelf_copy.is_file() and shelf_copy != book.resolve()
+            assert shelf_copy.parent.parent.name == "书架" and book.is_file()
             if args.transparent:
                 assert state["settings"]["opacity"] == 0
                 assert state["settings"]["background_color"] == "#111111"
@@ -211,7 +215,7 @@ def main():
                 assert state["settings"]["previous_chapter_key"] == "Alt+K"
             output = root / "artifacts"
             output.mkdir(exist_ok=True)
-            report = {"executable_start": True, "book_import": True, "position_saved": True, "clean_exit": True, "illustrated_epub": args.illustrated, "epub_navigation": args.navigation, "epub_library": args.library, "epub_semantic_formatting": args.formatted, "transparent_startup": args.transparent, "focus_keyboard_and_english": args.focus, "global_visibility_emergency_restart": args.emergency, "emergency_exit_seconds": emergency_seconds, "startup_and_import_seconds": startup}
+            report = {"executable_start": True, "book_import": True, "shelf_copy_created": True, "original_file_preserved": True, "position_saved": True, "clean_exit": True, "illustrated_epub": args.illustrated, "epub_navigation": args.navigation, "epub_library": args.library, "epub_semantic_formatting": args.formatted, "transparent_startup": args.transparent, "focus_keyboard_and_english": args.focus, "global_visibility_emergency_restart": args.emergency, "emergency_exit_seconds": emergency_seconds, "startup_and_import_seconds": startup}
             (output / "packaged-smoke.json").write_text(json.dumps(report, indent=2), encoding="utf-8")
             print(json.dumps(report))
         finally:

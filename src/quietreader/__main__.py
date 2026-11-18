@@ -35,7 +35,7 @@ def main():
     app.aboutToQuit.connect(window.shutdown)
     app.commitDataRequest.connect(lambda *_: window.save_state())
     window.show()
-    QTimer.singleShot(0, lambda: window.load_path(args.file) if args.file else window.restore_last())
+    QTimer.singleShot(0, lambda: window.add_book_paths([args.file], open_after=True) if args.file else window.restore_last())
     code = app.exec()
     lock.unlock()
     return code

@@ -120,7 +120,7 @@ class SettingsDialog(QDialog):
             self.fields[key] = field
             self.row(label, field)
         self.hotkey = self.fields["hotkey"]
-        self.note("点击修改，然后按下一个按键或组合键。Esc 取消录入。\nEsc 固定退出专注模式；打开、偏好和复制的快捷键保留。")
+        self.note("点击修改，然后按下一个按键或组合键。Esc 取消录入。\nEsc 固定退出专注模式；添加书籍、偏好和复制的快捷键保留。")
         self.note("PageUp / PageDown 翻页，Ctrl+PageUp / Ctrl+PageDown 切换章节；两组按键都可以修改。")
         self.note("专注模式仅显示正文，F10（可修改）或 Esc 退出，也可从托盘或正文右键菜单退出。")
         self.note("同一按键切换隐藏和显示。启用全局快捷键后，窗口隐藏或失去焦点时也可使用。\n紧急退出直接关闭程序，不隐藏到托盘，也不等待后台导入；会尝试保存当前位置。")
