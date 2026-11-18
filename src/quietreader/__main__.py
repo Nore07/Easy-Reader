@@ -5,6 +5,7 @@ import sys
 from PySide6.QtCore import QLockFile, QStandardPaths, QTimer
 from PySide6.QtWidgets import QApplication, QMessageBox
 
+from quietreader.persistence.data_paths import application_data_directory, legacy_migration_needed, migrate_legacy_data
 from quietreader.persistence.store import StateStore
 from quietreader.ui.window import MainWindow
 from quietreader.i18n import tr
@@ -19,17 +20,34 @@ def main():
     app.setApplicationName("QuietReader")
     app.setOrganizationName("QuietReader")
     app.setQuitOnLastWindowClosed(False)
-    directory = args.data_dir or Path(QStandardPaths.writableLocation(QStandardPaths.StandardLocation.AppLocalDataLocation))
+    directory = args.data_dir.expanduser().resolve() if args.data_dir else application_data_directory()
     try:
         directory.mkdir(parents=True, exist_ok=True)
     except OSError:
-        QMessageBox.critical(None, tr("无法启动"), tr("无法创建用户数据目录，请检查权限或使用 --data-dir 指定目录。"))
+        QMessageBox.critical(None, tr("无法启动"), tr("无法创建阅读器数据目录，请检查权限或使用 --data-dir 指定目录。"))
         return 1
     lock = QLockFile(str(directory / "quietreader.lock"))
     lock.setStaleLockTime(0)
     if not lock.tryLock(100):
         QMessageBox.information(None, tr("QuietReader 已在运行"), tr("同一数据目录的阅读器已在运行，请从托盘显示窗口。"))
         return 0
+    if args.data_dir is None:
+        legacy_directory = Path(QStandardPaths.writableLocation(QStandardPaths.StandardLocation.AppLocalDataLocation))
+        if legacy_migration_needed(legacy_directory, directory):
+            legacy_lock = QLockFile(str(legacy_directory / "quietreader.lock"))
+            legacy_lock.setStaleLockTime(0)
+            if not legacy_lock.tryLock(100):
+                lock.unlock()
+                QMessageBox.information(None, tr("QuietReader 正在使用旧数据目录"), tr("旧版阅读器仍在使用旧数据目录，请先关闭后再启动。"))
+                return 1
+            try:
+                migrate_legacy_data(legacy_directory, directory)
+            except OSError as error:
+                lock.unlock()
+                QMessageBox.critical(None, tr("无法启动"), tr("旧版数据迁移失败：{error}。旧数据仍保留在原位置。", error=str(error)))
+                return 1
+            finally:
+                legacy_lock.unlock()
     app._quietreader_release_lock = lock.unlock
     window = MainWindow(StateStore(directory))
     app.aboutToQuit.connect(window.shutdown)

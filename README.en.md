@@ -1,4 +1,4 @@
-# QuietReader · 静读 — A Quiet Library
+# QuietReader · 静读 — A Lazy Library
 
 [简体中文](README.md) · [English](README.en.md)
 
@@ -71,11 +71,9 @@ Global shortcuts for window visibility and emergency exit can be enabled in Conf
 
 ## Download and run
 
-Windows portable packages, when published, are available on [GitHub Releases](https://github.com/Nore07/Quiet-Reader/releases). Keep all files in the extracted directory when running a portable package.
+**Download the app:** [QuietReader 0.1.5 for Windows x64](https://github.com/Nore07/Quiet-Reader/releases/download/v0.1.5/QuietReader-0.1.5-Windows-x64.zip) is available on [GitHub Releases](https://github.com/Nore07/Quiet-Reader/releases). The archive does not include personal settings or books. After extraction, run `QuietReader.exe`; it creates a `data\` folder beside the executable. Keep all files in the extracted directory while running the app.
 
-### Run from source
-
-Python 3.12 or newer is required. From the repository root in PowerShell:
+**Run from source:** Download or clone this repository. Python 3.12 or newer is required. From the repository root in PowerShell:
 
 ```powershell
 py -3.12 -m venv .venv
@@ -89,20 +87,13 @@ To open a local book directly:
 .\.venv\Scripts\python.exe run.py "D:\Books\sample.epub"
 ```
 
-### Build a Windows portable package
-
-```powershell
-.\.venv\Scripts\python.exe -m pip install ".[build]"
-.\scripts\build.ps1
-```
-
-The package is written to `dist\QuietReader\`; keep the whole directory. The build script generates a multi-size ICO from the app PNG and bundles the PNG for runtime use.
-
 ## Formats and local data
 
 QuietReader currently targets common TXT and unencrypted, reflowable EPUB files. DRM-protected resources, fixed-layout EPUB, active content, and external network resources are not supported. Complex publisher styles may affect layout.
 
-Preferences, reading positions, bookmarks, and bookshelf copies are saved in the Windows local application data directory by default. Use `--data-dir <directory>` to select a separate data location, including for portable use or separate libraries.
+Preferences and books are stored in a `data` folder under the reader root. For source runs, this is `data\` under the repository root. For a release, it is `data\` beside `QuietReader.exe`. Configuration, reading positions, and bookmarks are in `data\state.json`; imported book copies are under `data\bookshelf\uncategorized\` or `data\bookshelf\<category>\`. The on-disk names `bookshelf` and `uncategorized` are English; the interface still translates the labels according to the selected language.
+
+The source version and release use their own root-level `data` folders and do not synchronize by default. To share data between them, pass the same `--data-dir <directory>` to both. On first use of the default path, if the target `data` folder is empty, data from the previous `%LOCALAPPDATA%\QuietReader\QuietReader\` location is copied there; the old directory is retained. Keep the release's `data` folder when updating. If you extract a release to a new directory, copy the old `data` folder alongside the new `QuietReader.exe`.
 
 ## Contributing
 

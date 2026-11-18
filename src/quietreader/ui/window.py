@@ -8,7 +8,7 @@ from PySide6.QtCore import QEvent, QObject, QPoint, QRunnable, QThreadPool, Qt, 
 from PySide6.QtGui import QAction, QGuiApplication, QIcon, QKeySequence, QShortcut
 from PySide6.QtWidgets import (
     QApplication, QComboBox, QDialog, QFileDialog, QHBoxLayout, QLabel, QInputDialog, QMessageBox,
-    QListWidget, QListWidgetItem, QMainWindow, QMenu, QPushButton, QStackedWidget,
+    QListWidget, QListWidgetItem, QMainWindow, QMenu, QPushButton, QSizePolicy, QStackedWidget,
     QSizeGrip, QSlider, QSystemTrayIcon, QTabWidget, QVBoxLayout, QWidget,
 )
 
@@ -295,18 +295,31 @@ class MainWindow(QMainWindow):
         self.reading_tabs.addTab(self.chapters, "目录")
         bookmark_panel = QWidget()
         bookmark_layout = QVBoxLayout(bookmark_panel)
+        bookmark_layout.setContentsMargins(4, 6, 4, 6)
         self.bookmarks = QListWidget()
         self.bookmarks.setAccessibleName("书签与笔记")
         self.bookmarks.itemActivated.connect(self._bookmark_activated)
         self.bookmarks.itemClicked.connect(self._bookmark_activated)
         bookmark_layout.addWidget(self.bookmarks, 1)
         bookmark_actions = QHBoxLayout()
-        self.bookmark_add_button = self._button("添加书签", self.add_bookmark)
-        self.bookmark_note_button = self._button("编辑笔记", self.edit_bookmark_note)
-        self.bookmark_remove_button = self._button("删除书签", self.remove_bookmark)
-        bookmark_actions.addWidget(self.bookmark_add_button)
-        bookmark_actions.addWidget(self.bookmark_note_button)
-        bookmark_actions.addWidget(self.bookmark_remove_button)
+        bookmark_actions.setContentsMargins(0, 0, 0, 0)
+        bookmark_actions.setSpacing(3)
+        self.bookmark_add_button = self._button("添加", self.add_bookmark)
+        self.bookmark_note_button = self._button("编辑", self.edit_bookmark_note)
+        self.bookmark_remove_button = self._button("删除", self.remove_bookmark)
+        for button, label in (
+            (self.bookmark_add_button, "添加书签"),
+            (self.bookmark_note_button, "编辑笔记"),
+            (self.bookmark_remove_button, "删除书签"),
+        ):
+            button.setObjectName("bookmarkAction")
+            button.setMinimumWidth(0)
+            button.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+            button.setToolTip(label)
+            button.setProperty("translation_tip", label)
+            button.setAccessibleName(label)
+            button.setProperty("translation_accessible", label)
+            bookmark_actions.addWidget(button)
         bookmark_layout.addLayout(bookmark_actions)
         self.reading_tabs.addTab(bookmark_panel, "书签")
         self.book_info = BookInfoPanel()
@@ -355,16 +368,25 @@ class MainWindow(QMainWindow):
         self.progress.sliderReleased.connect(self._seek)
         self.progress.setEnabled(False)
         reading.addWidget(self.progress)
-        navigation_widget = QWidget()
-        navigation = QHBoxLayout(navigation_widget)
+        self.reader_navigation = QWidget()
+        self.reader_navigation.setObjectName("readerNavigation")
+        self.reader_navigation_layout = QHBoxLayout(self.reader_navigation)
+        navigation = self.reader_navigation_layout
         navigation.setContentsMargins(0, 0, 0, 0)
+        navigation.setSpacing(2)
         self.previous_chapter = self._button("上一章", lambda: self.turn_chapter(-1))
-        self.previous_chapter.setToolTip("上一章")
         self.previous = self._button("← 上一页", lambda: self.turn_page(-1))
         self.next = self._button("下一页 →", lambda: self.turn_page(1))
         self.next_chapter = self._button("下一章", lambda: self.turn_chapter(1))
-        self.next_chapter.setToolTip("下一章")
-        self.page_label = self._label("PageUp / PageDown", "status")
+        self.page_label = self._label("PageUp / PageDown", "pageStatus")
+        self.page_label.setMinimumWidth(0)
+        self.page_label.setSizePolicy(QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Fixed)
+        self.page_label.setProperty("full_text", "PageUp / PageDown")
+        self.page_label.setProperty("compact_text", "Pg")
+        for button in (self.previous_chapter, self.previous, self.next, self.next_chapter):
+            button.setObjectName("pageControl")
+            button.setMinimumWidth(28)
+            button.setSizePolicy(QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Fixed)
         navigation.addWidget(self.previous_chapter)
         navigation.addWidget(self.previous)
         navigation.addStretch()
@@ -372,7 +394,7 @@ class MainWindow(QMainWindow):
         navigation.addStretch()
         navigation.addWidget(self.next)
         navigation.addWidget(self.next_chapter)
-        reading.addWidget(navigation_widget)
+        reading.addWidget(self.reader_navigation)
         self.main_pages.addWidget(self.reader_page)
         self.shelf = ShelfPanel()
         self.open_button = self.shelf.add_button
@@ -408,7 +430,7 @@ class MainWindow(QMainWindow):
         encoding_layout.addStretch()
         self.encoding_bar.hide()
         root.addWidget(self.encoding_bar)
-        self.chrome_widgets = [header, tools_widget, self.hotkey_notice, self.sidebar, self.book_title, self.chapter_title, self.progress, navigation_widget, bottom_widget, self.encoding_bar]
+        self.chrome_widgets = [header, tools_widget, self.hotkey_notice, self.sidebar, self.book_title, self.chapter_title, self.progress, self.reader_navigation, bottom_widget, self.encoding_bar]
         self.open_shortcut = QShortcut(QKeySequence("Ctrl+O"), self)
         self.open_shortcut.activated.connect(self.choose_file)
         self.settings_shortcut = QShortcut(QKeySequence("Ctrl+,"), self)
@@ -610,7 +632,7 @@ class MainWindow(QMainWindow):
             record.setdefault("source_path", old_path)
         self._refresh_shelf()
         self.save_state()
-        self.set_status("已将《{title}》移动到“{category}”。", title=record["title"], category=self.t(category) if category == UNCLASSIFIED else category)
+        self.set_status("已将《{title}》移动到“{category}”。", title=record["title"], category=self.t("未分类") if category == UNCLASSIFIED else category)
 
     def remove_shelf_book(self, book_id):
         if self.store.read_only or self.loading:
@@ -722,6 +744,9 @@ class MainWindow(QMainWindow):
         self.progress.setValue(0)
         self.page_label.setText("PageUp / PageDown")
         self.page_label.setProperty("translation_source", None)
+        self.page_label.setProperty("full_text", "PageUp / PageDown")
+        self.page_label.setProperty("compact_text", "Pg")
+        self.page_label.setToolTip("PageUp / PageDown")
         self.reading_tabs.setTabVisible(3, False)
         self.reading_tabs.setTabVisible(4, False)
         self.encoding_button.hide()
@@ -962,9 +987,14 @@ class MainWindow(QMainWindow):
             if self.section_index == len(self.book.sections) - 1 and self.reader.page == self.reader.page_count - 1:
                 fraction = 1
             self.page_label.setProperty("translation_source", None)
-            self.page_label.setText(tr("{page} / {pages} 页 · 全书 {progress}", self.settings.language, page=self.reader.page + 1, pages=self.reader.page_count, progress=f"{fraction:.0%}"))
+            full_label = tr("{page} / {pages} 页 · 全书 {progress}", self.settings.language, page=self.reader.page + 1, pages=self.reader.page_count, progress=f"{fraction:.0%}")
+            compact_label = f"{self.reader.page + 1}/{self.reader.page_count}"
+            self.page_label.setProperty("full_text", full_label)
+            self.page_label.setProperty("compact_text", compact_label)
+            self.page_label.setToolTip(full_label)
             if not self.progress.isSliderDown():
                 self.progress.setValue(round(fraction * 1000))
+        self._sync_reader_navigation_labels()
 
     def _seek(self):
         if not self.book:
@@ -1237,7 +1267,10 @@ class MainWindow(QMainWindow):
             self.reading_tabs.setTabText(index, self.t(source))
         self.shelf.retranslate(self.settings.language)
         self.book_info.set_book(self.book, self.settings.language)
-        self._sync_chapter_button_labels()
+        if self.book:
+            self._update_progress()
+        else:
+            self._sync_reader_navigation_labels()
         self.encoding.setItemText(0, self.t("自动识别"))
         self.focus_button.setText(self.t("退出专注" if self.focus_mode else "专注"))
         self._update_sidebar_toggle()
@@ -1311,14 +1344,39 @@ class MainWindow(QMainWindow):
                 widget.hide()
         self.schedule_save()
 
-    def _sync_chapter_button_labels(self):
-        if not hasattr(self, "previous_chapter"):
+    def _sync_reader_navigation_labels(self):
+        if not hasattr(self, "reader_navigation"):
             return
-        compact = self.width() < 620
-        self.previous_chapter.setText("‹" if compact else self.t("上一章"))
-        self.next_chapter.setText("›" if compact else self.t("下一章"))
-        self.previous_chapter.setToolTip(self.t("上一章"))
-        self.next_chapter.setToolTip(self.t("下一章"))
+
+        controls = (
+            (self.previous_chapter, "上一章", "«"),
+            (self.previous, "← 上一页", "‹"),
+            (self.next, "下一页 →", "›"),
+            (self.next_chapter, "下一章", "»"),
+        )
+        for button, source, _ in controls:
+            label = self.t(source)
+            button.setText(label)
+            button.setToolTip(label)
+            button.setAccessibleName(label)
+
+        full_page_label = self.page_label.property("full_text") or self.page_label.text()
+        compact_page_label = self.page_label.property("compact_text") or "Pg"
+        self.page_label.setText(full_page_label)
+        self.page_label.setToolTip(full_page_label)
+        spacing = self.reader_navigation_layout.spacing()
+        full_width = (
+            sum(button.sizeHint().width() for button, _, _ in controls)
+            + self.page_label.sizeHint().width()
+            + max(0, self.reader_navigation_layout.count() - 1) * spacing
+            + 8
+        )
+        compact = self.reader_navigation.width() < full_width
+        if compact:
+            for button, _, symbol in controls:
+                button.setText(symbol)
+            self.page_label.setText(compact_page_label)
+        self.reader_navigation.setProperty("compact", compact)
 
     def _configure_hotkeys(self, enabled=None):
         settings = self.settings
@@ -1425,7 +1483,7 @@ class MainWindow(QMainWindow):
             self.eyebrow.setVisible(self.width() >= 700 and not self.focus_mode)
             self.brand.setVisible(not self.focus_mode)
             self._update_window_controls()
-            self._sync_chapter_button_labels()
+            self._sync_reader_navigation_labels()
 
     def changeEvent(self, event):
         super().changeEvent(event)

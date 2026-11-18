@@ -44,6 +44,7 @@ def stylesheet(palette, alpha=255, borderless=False, resize_outline=False):
     QLabel#bookTitle {{ font-size: 18px; font-weight: 600; }}
     QLabel#chapterTitle {{ font-size: 14px; color: {c['muted']}; }}
     QLabel#status {{ color: {c['muted']}; font-size: 11px; }}
+    QLabel#pageStatus {{ color: {c['muted']}; font-size: 11px; padding: 0 3px; }}
     QLabel#toolbarLabel {{ color: {c['muted']}; font-size: 12px; }}
     QPushButton {{ background: {c['button']}; border: 1px solid {c['line']}; padding: 8px 14px; min-height: 20px; border-radius: 6px; }}
     QPushButton:hover {{ background: {c['selected']}; border-color: {c['accent']}; }}
@@ -55,6 +56,8 @@ def stylesheet(palette, alpha=255, borderless=False, resize_outline=False):
     QPushButton#quietAction {{ color: {c['muted']}; background: transparent; border-color: transparent; }}
     QPushButton#quietAction:hover {{ color: {c['ink']}; background: {c['button']}; border-color: {c['line']}; }}
     QPushButton#secondaryAction {{ color: {c['ink']}; background: {c['button']}; border-color: transparent; }}
+    QPushButton#bookmarkAction {{ padding: 4px 6px; min-height: 18px; font-size: 11px; }}
+    QPushButton#pageControl {{ padding: 5px 7px; min-width: 28px; min-height: 20px; }}
     QPushButton#windowControl {{ color: {c['muted']}; background: transparent; border: none; padding: 0; min-height: 0; border-radius: 5px; font-size: 17px; }}
     QPushButton#windowControl:hover {{ color: {c['ink']}; background: {c['button']}; }}
     QPushButton#windowClose:hover {{ color: #ffffff; background: #c7463b; }}

@@ -41,6 +41,7 @@ Thumbs.db
 /scripts/*_smoke.py
 /scripts/packaged_smoke.py
 /scripts/validate-codex-skills.mjs
+/data/
 
 # Local output
 *.log

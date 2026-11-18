@@ -29,9 +29,6 @@ Homepage = "https://github.com/Nore07/Quiet-Reader"
 Repository = "https://github.com/Nore07/Quiet-Reader"
 Issues = "https://github.com/Nore07/Quiet-Reader/issues"
 
-[project.optional-dependencies]
-build = ["pyinstaller>=6,<7"]
-
 [project.scripts]
 quietreader = "quietreader.__main__:main"
 
@@ -39,4 +36,4 @@ quietreader = "quietreader.__main__:main"
 where = ["src"]
 
 [tool.setuptools.package-data]
-quietreader = ["assets/*.png", "assets/*.ico"]
+quietreader = ["assets/*.png"]

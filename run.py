@@ -1,4 +1,4 @@
-"""Source and PyInstaller entry point; always launch with this project's .venv."""
+"""Source entry point; launch with this project's virtual environment."""
 from pathlib import Path
 import sys
 

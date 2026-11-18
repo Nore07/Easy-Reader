@@ -8,7 +8,8 @@ import shutil
 import uuid
 
 
-UNCLASSIFIED = "未分类"
+BOOKSHELF_DIR = "bookshelf"
+UNCLASSIFIED = "uncategorized"
 SUPPORTED_SUFFIXES = {".txt", ".epub"}
 _INVALID_CATEGORY_CHARS = re.compile(r'[<>:"/\\|?*\x00-\x1f]')
 _RESERVED_CATEGORY_NAMES = {"con", "prn", "aux", "nul", *(f"com{i}" for i in range(1, 10)), *(f"lpt{i}" for i in range(1, 10))}
@@ -34,7 +35,7 @@ class ShelfManager:
 
     def __init__(self, data_directory):
         self.data_directory = Path(data_directory).expanduser().resolve()
-        self.root = self.data_directory / "书架"
+        self.root = self.data_directory / BOOKSHELF_DIR
 
     @property
     def unclassified(self):
@@ -94,7 +95,7 @@ class ShelfManager:
         if (
             not name or len(name) > 64 or name in (".", "..")
             or name.endswith((".", " ")) or _INVALID_CATEGORY_CHARS.search(name)
-            or name.casefold() == UNCLASSIFIED.casefold()
+            or name.casefold() in {UNCLASSIFIED.casefold(), "未分类".casefold()}
             or name.split(".", 1)[0].casefold() in _RESERVED_CATEGORY_NAMES
         ):
             raise ShelfError("分类名称为空、重复或包含文件夹不允许的字符。")

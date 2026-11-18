@@ -1,4 +1,4 @@
-# QuietReader · 静读 —— 安静的大图书馆
+# QuietReader · 静读 —— 偷懒的大图书馆
 
 [简体中文](README.md) · [English](README.en.md)
 
@@ -71,11 +71,9 @@ QuietReader 是一款面向 Windows 的离线本地阅读器，使用 Python 与
 
 ## 获取与运行
 
-Windows 便携版（如有发布）可在 [GitHub Releases](https://github.com/Nore07/Quiet-Reader/releases) 获取。运行便携版时请保留解压目录中的全部文件。
+**下载软件包：** [QuietReader 0.1.5 Windows x64 便携版](https://github.com/Nore07/Quiet-Reader/releases/download/v0.1.5/QuietReader-0.1.5-Windows-x64.zip) 可在 [GitHub Releases](https://github.com/Nore07/Quiet-Reader/releases) 下载。压缩包不包含个人配置或书籍；解压后运行 `QuietReader.exe`，程序会在其旁边创建 `data\`。运行时请保留解压目录中的全部文件。
 
-### 从源码运行
-
-需要 Python 3.12 或更新版本。在仓库根目录运行 PowerShell 命令：
+**从源码运行：** 下载或克隆仓库后，需要 Python 3.12 或更新版本。在仓库根目录运行 PowerShell 命令：
 
 ```powershell
 py -3.12 -m venv .venv
@@ -89,20 +87,13 @@ py -3.12 -m venv .venv
 .\.venv\Scripts\python.exe run.py "D:\Books\sample.epub"
 ```
 
-### 构建 Windows 便携版
-
-```powershell
-.\.venv\Scripts\python.exe -m pip install ".[build]"
-.\scripts\build.ps1
-```
-
-构建产物位于 `dist\QuietReader\`，需保留整个目录。`build.ps1` 会从应用 PNG 图标生成多尺寸 ICO，并将 PNG 作为运行时资源打包。
-
 ## 格式与数据
 
 目前面向常见的 TXT 与未加密、重排版 EPUB。DRM 加密资源、固定版式 EPUB、活动内容和外部网络资源不在支持范围内；不同 EPUB 的样式复杂度可能影响排版效果。
 
-默认情况下，配置、阅读位置、书签和书架副本写入 Windows 本地应用数据目录。可使用 `--data-dir <目录>` 指定独立的数据位置；这也适用于便携使用或多个独立书库。
+配置和书籍都保存在阅读器根目录下的 `data` 文件夹中：源码运行时位于仓库根目录的 `data\`，Releases 版位于 `QuietReader.exe` 所在目录的 `data\`。配置、阅读进度和书签保存在 `data\state.json`；导入的书籍副本保存在 `data\bookshelf\uncategorized\` 或 `data\bookshelf\<分类名>\` 中。磁盘上的 `bookshelf` 和 `uncategorized` 使用英文名称，界面仍会根据语言设置显示“书架 / Bookshelf”和“未分类 / Uncategorized”。
+
+源码版和 Releases 版分别使用各自根目录的 `data`，默认不会互相同步。若要共享数据，可给两种启动方式传入相同的 `--data-dir <目录>`。首次使用默认目录且目标 `data` 为空时，旧版 `%LOCALAPPDATA%\QuietReader\QuietReader\` 中的数据会复制过去，原目录会保留。更新 Releases 版时请保留原目录中的 `data`；若解压到新目录，请把旧目录的 `data` 一并复制过去。
 
 ## 参与项目
 

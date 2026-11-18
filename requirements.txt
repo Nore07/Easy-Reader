@@ -1,4 +1,4 @@
-# Runtime dependencies. Install the optional build tool with: pip install ".[build]".
+# Runtime dependencies for running QuietReader from source.
 PySide6-Essentials>=6.8,<6.13
 charset-normalizer>=3.4,<4
 defusedxml>=0.7.1,<1
