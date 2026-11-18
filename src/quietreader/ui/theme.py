@@ -30,23 +30,38 @@ def stylesheet(palette, alpha=255, borderless=False):
     QMainWindow {{ background: transparent; }}
     QWidget#surface {{ background: rgba({rgb},{alpha}); {surface_frame} }}
     QWidget#sidebar {{ background: {c['side']}; border-radius: 7px; }}
+    QWidget#pageNavigation {{ background: {c['side']}; border-radius: 7px; }}
+    QWidget#shelfHeading {{ background: transparent; }}
+    QWidget#shelfToolbar {{ background: transparent; }}
     QLabel#brand {{ font-size: 22px; font-weight: 600; letter-spacing: 2px; color: {c['ink'] if 'on_accent' in c else c['accent']}; }}
     QLabel#eyebrow {{ font-size: 10px; letter-spacing: 2px; color: {c['muted']}; }}
+    QLabel#shelfTitle {{ font-size: 24px; font-weight: 600; color: {c['ink']}; padding: 2px 0; }}
     QLabel#bookTitle {{ font-size: 18px; font-weight: 600; }}
     QLabel#chapterTitle {{ font-size: 14px; color: {c['muted']}; }}
     QLabel#status {{ color: {c['muted']}; font-size: 11px; }}
-    QPushButton {{ background: {c['button']}; border: 1px solid transparent; padding: 8px 13px; border-radius: 5px; }}
-    QPushButton:hover {{ border-color: {c['accent']}; }}
+    QLabel#toolbarLabel {{ color: {c['muted']}; font-size: 12px; }}
+    QPushButton {{ background: {c['button']}; border: 1px solid {c['line']}; padding: 8px 14px; min-height: 20px; border-radius: 6px; }}
+    QPushButton:hover {{ background: {c['selected']}; border-color: {c['accent']}; }}
+    QPushButton:pressed {{ background: {c['accent']}; color: {c.get('on_accent', c['paper'])}; }}
     QPushButton:checked {{ background: {c['selected']}; border-color: {c['accent']}; }}
     QPushButton:disabled {{ color: {c['muted']}; background: transparent; }}
-    QPushButton#primary {{ color: {c.get('on_accent', c['paper'])}; background: {c['accent']}; padding: 10px 18px; }}
+    QPushButton#primary {{ color: {c.get('on_accent', c['paper'])}; background: {c['accent']}; border-color: {c['accent']}; padding: 9px 16px; }}
+    QPushButton#primary:hover {{ background: {c['selected']}; color: {c['ink']}; }}
+    QPushButton#quietAction {{ color: {c['muted']}; background: transparent; border-color: transparent; }}
+    QPushButton#quietAction:hover {{ color: {c['ink']}; background: {c['button']}; border-color: {c['line']}; }}
+    QPushButton#pageNav {{ color: {c['muted']}; background: transparent; border: 1px solid transparent; padding: 6px 16px; min-height: 20px; font-weight: 500; }}
+    QPushButton#pageNav:hover {{ color: {c['ink']}; background: {c['button']}; }}
+    QPushButton#pageNav:checked {{ color: {c['ink']}; background: {c['paper']}; border-color: {c['line']}; font-weight: 600; }}
     QListWidget {{ background: transparent; border: none; outline: 0; padding: 3px; }}
     QListWidget::item {{ padding: 12px 8px; border-radius: 5px; }}
     QListWidget::item:selected {{ background: {c['selected']}; color: {c['ink']}; }}
     QListWidget::item:hover {{ background: {c['button']}; }}
-    QTabWidget::pane {{ border: none; }}
-    QTabBar::tab {{ padding: 9px 16px; border-bottom: 2px solid transparent; }}
-    QTabBar::tab:selected {{ border-bottom: 2px solid {c['accent']}; }}
+    QListWidget#shelfList {{ background: {c['paper']}; border: 1px solid {c['line']}; border-radius: 8px; padding: 7px; }}
+    QListWidget#shelfList::item {{ padding: 13px 12px; border-bottom: 1px solid {c['line']}; border-radius: 4px; }}
+    QTabWidget::pane {{ border: none; top: 1px; }}
+    QTabBar::tab {{ color: {c['muted']}; padding: 10px 16px; margin-right: 5px; border-bottom: 2px solid transparent; }}
+    QTabBar::tab:hover {{ color: {c['ink']}; background: {c['button']}; border-top-left-radius: 5px; border-top-right-radius: 5px; }}
+    QTabBar::tab:selected {{ color: {c['accent']}; border-bottom: 2px solid {c['accent']}; font-weight: 600; }}
     QDialog {{ background: {c['paper']}; }}
     QScrollArea#preferencesScroll {{ background: {c['paper']}; border: 1px solid {c['line']}; border-radius: 5px; }}
     QWidget#preferencesContent, QWidget#preferencesViewport {{ background: {c['paper']}; }}
@@ -56,7 +71,9 @@ def stylesheet(palette, alpha=255, borderless=False):
     QScrollArea#preferencesScroll QScrollBar::handle:vertical:hover {{ background: {c['accent']}; }}
     QScrollArea#preferencesScroll QScrollBar::add-line:vertical, QScrollArea#preferencesScroll QScrollBar::sub-line:vertical {{ height: 0; }}
     QScrollArea#preferencesScroll QScrollBar::add-page:vertical, QScrollArea#preferencesScroll QScrollBar::sub-page:vertical {{ background: transparent; }}
-    QComboBox, QSpinBox, QDoubleSpinBox, QFontComboBox, QLineEdit {{ background: {c['paper']}; border: 1px solid {c['line']}; border-radius: 4px; padding: 6px; min-height: 22px; }}
+    QComboBox, QSpinBox, QDoubleSpinBox, QFontComboBox, QLineEdit {{ background: {c['paper']}; border: 1px solid {c['line']}; border-radius: 6px; padding: 6px 9px; min-height: 24px; }}
+    QComboBox:hover, QSpinBox:hover, QDoubleSpinBox:hover, QFontComboBox:hover, QLineEdit:hover {{ border-color: {c['muted']}; }}
+    QComboBox:focus, QSpinBox:focus, QDoubleSpinBox:focus, QFontComboBox:focus, QLineEdit:focus {{ border-color: {c['accent']}; }}
     QCheckBox {{ padding: 5px 0; }}
     QToolTip {{ background: {c['paper']}; color: {c['ink']}; border: 1px solid {c['line']}; }}
     """

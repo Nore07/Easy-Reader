@@ -165,9 +165,20 @@ class MainWindow(QMainWindow):
         tools_widget = QWidget()
         tools = QHBoxLayout(tools_widget)
         tools.setContentsMargins(0, 0, 0, 0)
-        self.view_toggle_button = self._button("阅读 / 书架", self.toggle_main_page)
-        self.view_toggle_button.setToolTip("切换阅读与书架页面")
-        tools.addWidget(self.view_toggle_button)
+        self.page_navigation = QWidget()
+        self.page_navigation.setObjectName("pageNavigation")
+        page_navigation_layout = QHBoxLayout(self.page_navigation)
+        page_navigation_layout.setContentsMargins(3, 3, 3, 3)
+        page_navigation_layout.setSpacing(2)
+        self.reading_button = self._button("阅读", self.show_reading_page, True)
+        self.reading_button.setObjectName("pageNav")
+        self.reading_button.setToolTip("进入阅读页面，查看目录、书签和资料")
+        self.shelf_button = self._button("书架", self.show_shelf_page, True)
+        self.shelf_button.setObjectName("pageNav")
+        self.shelf_button.setToolTip("浏览最近阅读、所有书籍和分类")
+        page_navigation_layout.addWidget(self.reading_button)
+        page_navigation_layout.addWidget(self.shelf_button)
+        tools.addWidget(self.page_navigation)
         self.pin_button = self._button("置顶", self.toggle_pin, True)
         tools.addWidget(self.pin_button)
         self.encoding_button = self._button("编码", self.toggle_encoding)
@@ -224,7 +235,7 @@ class MainWindow(QMainWindow):
         self.landmarks.itemActivated.connect(self._page_activated)
         self.landmarks.itemClicked.connect(self._page_activated)
         self.reading_tabs.addTab(self.landmarks, "位置")
-        self.reading_tabs.setTabVisible(2, False)
+        self.reading_tabs.setTabVisible(2, True)
         self.reading_tabs.setTabVisible(3, False)
         self.reading_tabs.setTabVisible(4, False)
         side.addWidget(self.reading_tabs)
@@ -284,6 +295,7 @@ class MainWindow(QMainWindow):
         self.main_pages.addWidget(self.shelf)
         self.recent = self.shelf.recent
         body.addWidget(self.main_pages, 1)
+        self._sync_page_navigation()
         root.addLayout(body, 1)
         bottom_widget = QWidget()
         bottom = QHBoxLayout(bottom_widget)
@@ -441,7 +453,7 @@ class MainWindow(QMainWindow):
     def open_shelf_book(self, book_id):
         record = next((item for item in self.store.state["books"] if item["id"] == book_id), None)
         if record:
-            self.main_pages.setCurrentWidget(self.reader_page)
+            self.show_reading_page()
             encoding = record.get("encoding", "auto")
             self.load_path(record["path"], encoding if encoding in ENCODINGS else "auto")
 
@@ -617,7 +629,6 @@ class MainWindow(QMainWindow):
         self.progress.setValue(0)
         self.page_label.setText("PageUp / PageDown")
         self.page_label.setProperty("translation_source", None)
-        self.reading_tabs.setTabVisible(2, False)
         self.reading_tabs.setTabVisible(3, False)
         self.reading_tabs.setTabVisible(4, False)
         self.encoding_button.hide()
@@ -656,7 +667,7 @@ class MainWindow(QMainWindow):
         if self.closed:
             return
         self.book = book
-        self.main_pages.setCurrentWidget(self.reader_page)
+        self.show_reading_page()
         self.setWindowTitle(f"{book.title} · QuietReader")
         self.book_title.setText(book.title)
         self.book_title.setProperty("translation_source", None)
@@ -973,11 +984,36 @@ class MainWindow(QMainWindow):
     def _refresh_recent(self):
         self._refresh_shelf()
 
-    def toggle_main_page(self):
+    def _sync_page_navigation(self):
+        if not hasattr(self, "main_pages"):
+            return
+        reading_active = self.main_pages.currentWidget() is self.reader_page
+        if hasattr(self, "reading_button"):
+            self.reading_button.setChecked(reading_active)
+            self.shelf_button.setChecked(not reading_active)
+        if hasattr(self, "sidebar"):
+            if reading_active and not self.focus_mode:
+                self.sidebar.setFixedWidth(max(150, min(220, int(self.width() * 0.30))))
+            self.sidebar.setVisible(reading_active and not self.focus_mode)
+
+    def show_reading_page(self, checked=False):
         if self.focus_mode:
             return
-        next_page = self.shelf if self.main_pages.currentWidget() is self.reader_page else self.reader_page
-        self.main_pages.setCurrentWidget(next_page)
+        self.main_pages.setCurrentWidget(self.reader_page)
+        self._sync_page_navigation()
+
+    def show_shelf_page(self, checked=False):
+        if self.focus_mode:
+            return
+        self.main_pages.setCurrentWidget(self.shelf)
+        self._sync_page_navigation()
+
+    def toggle_main_page(self):
+        """Compatibility helper for existing shortcuts and automation scripts."""
+        if self.main_pages.currentWidget() is self.reader_page:
+            self.show_shelf_page()
+        else:
+            self.show_reading_page()
 
     def toggle_encoding(self):
         self.encoding_bar.setVisible(not self.encoding_bar.isVisible())
@@ -992,7 +1028,7 @@ class MainWindow(QMainWindow):
             return
         entering = not self.focus_mode
         if entering:
-            self.main_pages.setCurrentWidget(self.reader_page)
+            self.show_reading_page()
             self._pre_focus_geometry = self.geometry()
             self._pre_focus_maximized = self.isMaximized()
             self._chrome_visibility = {widget: not widget.isHidden() for widget in self.chrome_widgets}
@@ -1059,7 +1095,8 @@ class MainWindow(QMainWindow):
                         getattr(widget, setter)(self.t(original))
         self.open_button.setText(self.t("添加书籍"))
         self.config_button.setText(self.t("配置"))
-        self.view_toggle_button.setText(self.t("阅读 / 书架"))
+        self.reading_button.setText(self.t("阅读"))
+        self.shelf_button.setText(self.t("书架"))
         for index, source in enumerate(("目录", "书签", "资料", "页码", "位置")):
             self.reading_tabs.setTabText(index, self.t(source))
         self.shelf.retranslate(self.settings.language)
@@ -1098,7 +1135,7 @@ class MainWindow(QMainWindow):
         self._apply_window_style()
         self.pin_button.setChecked(settings.always_on_top)
         self.reader.apply_settings(settings)
-        self.sidebar.setVisible(not self.focus_mode and self.width() >= 700)
+        self._sync_page_navigation()
         self.brand.setVisible(self.width() >= 700 and not self.focus_mode)
         self.eyebrow.setVisible(self.width() >= 700 and not self.focus_mode)
         self.focus_button.setChecked(self.focus_mode)
@@ -1232,7 +1269,7 @@ class MainWindow(QMainWindow):
         if hasattr(self, "save_timer"):
             self.schedule_save()
         if hasattr(self, "sidebar"):
-            self.sidebar.setVisible(not self.focus_mode and self.width() >= 700)
+            self._sync_page_navigation()
             self.eyebrow.setVisible(self.width() >= 700 and not self.focus_mode)
             self.brand.setVisible(self.width() >= 700 and not self.focus_mode)
             self._sync_chapter_button_labels()
