@@ -104,6 +104,7 @@ class Settings:
     next_chapter_key: str = "Ctrl+PgDown"
     previous_chapter_key: str = "Ctrl+PgUp"
     focus_key: str = "F10"
+    focus_adjust_key: str = "Alt"
 
     @classmethod
     def from_dict(cls, raw):
@@ -133,6 +134,8 @@ class Settings:
             result.text_color = color.lower()
         if raw.get("language") in ("system", "zh_CN", "en"):
             result.language = raw["language"]
+        if raw.get("focus_adjust_key") in ("Alt", "Ctrl", "Shift"):
+            result.focus_adjust_key = raw["focus_adjust_key"]
         if isinstance(raw.get("font_family"), str) and 0 < len(raw["font_family"]) <= 100:
             result.font_family = raw["font_family"]
         bindings = {key: normalize_binding(raw.get(key, getattr(result, key))) for key in BINDING_FIELDS}

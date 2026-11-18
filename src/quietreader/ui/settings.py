@@ -89,6 +89,14 @@ class SettingsDialog(QDialog):
         text_row.addWidget(self.button("选择颜色", self.choose_text_color))
         text_row.addWidget(self.button("自动文字颜色", self.reset_text_color))
         self.row("文字颜色", text_row)
+        self.focus_adjust_key = QComboBox()
+        self.focus_adjust_key.addItem("Alt", "Alt")
+        self.focus_adjust_key.addItem("Ctrl", "Ctrl")
+        self.focus_adjust_key.addItem("Shift", "Shift")
+        self.focus_adjust_key.setCurrentIndex(self.focus_adjust_key.findData(settings.focus_adjust_key))
+        self.fields["focus_adjust_key"] = self.focus_adjust_key
+        self.row("专注模式窗口调整键", self.focus_adjust_key)
+        self.note("专注模式下按住此键，窗口内拖动可移动；靠近边缘拖动可缩放。默认使用 Alt。")
         for key, label, low, high, step in [
             ("opacity", "专注模式背景不透明度", 0.0, 1.0, 0.05),
         ]:
@@ -182,6 +190,8 @@ class SettingsDialog(QDialog):
         self.language.setItemText(0, self.t("跟随系统"))
         for index, source in enumerate(("跟随系统", "纸白", "暖纸", "夜读")):
             self.theme.setItemText(index, self.t(source))
+        for index, source in enumerate(("Alt", "Ctrl", "Shift")):
+            self.focus_adjust_key.setItemText(index, self.t(source))
         for field in self.fields.values():
             if isinstance(field, KeyBindingButton):
                 field.language = self.language.currentData()
@@ -201,6 +211,8 @@ class SettingsDialog(QDialog):
                 field.setChecked(value)
             elif isinstance(field, KeyBindingButton):
                 field.set_sequence(value)
+            elif isinstance(field, QComboBox):
+                field.setCurrentIndex(field.findData(value))
             else:
                 field.setValue(value)
 
@@ -212,6 +224,8 @@ class SettingsDialog(QDialog):
                 data[key] = field.isChecked()
             elif isinstance(field, KeyBindingButton):
                 data[key] = field.sequence
+            elif isinstance(field, QComboBox):
+                data[key] = field.currentData()
             else:
                 data[key] = field.value()
         return Settings.from_dict(data)

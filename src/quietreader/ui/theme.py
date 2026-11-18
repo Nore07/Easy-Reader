@@ -20,11 +20,14 @@ def colors(theme, background_color=""):
     return {"paper": "#f5f3eb" if theme != "sepia" else "#eee2c9", "ink": "#283c33", "muted": "#68796c", "side": "#e8ebdf", "line": "#d8ded0", "accent": "#315743", "button": "#dfe6d7", "selected": "#cfdeca"}
 
 
-def stylesheet(palette, alpha=255, borderless=False):
+def stylesheet(palette, alpha=255, borderless=False, resize_outline=False):
     c = palette
     paper = c["paper"].lstrip("#")
     rgb = ",".join(str(int(paper[i:i+2], 16)) for i in (0, 2, 4))
-    surface_frame = f"border: 1px solid {c['line']}; border-radius: 9px;" if alpha and not borderless else "border: none; border-radius: 0;"
+    if resize_outline:
+        surface_frame = f"border: 1px dashed {c['accent']}; border-radius: 2px;"
+    else:
+        surface_frame = f"border: 1px solid {c['line']}; border-radius: 9px;" if alpha and not borderless else "border: none; border-radius: 0;"
     return f"""
     QWidget {{ color: {c['ink']}; font-family: 'Microsoft YaHei'; font-size: 13px; }}
     QMainWindow {{ background: transparent; }}
@@ -54,6 +57,8 @@ def stylesheet(palette, alpha=255, borderless=False):
     QPushButton#windowControl {{ color: {c['muted']}; background: transparent; border: none; padding: 0; min-height: 0; border-radius: 5px; font-size: 17px; }}
     QPushButton#windowControl:hover {{ color: {c['ink']}; background: {c['button']}; }}
     QPushButton#windowClose:hover {{ color: #ffffff; background: #c7463b; }}
+    QPushButton#sidebarToggle {{ color: {c['muted']}; background: transparent; border: none; padding: 0; min-height: 0; border-radius: 4px; font-size: 10px; font-weight: 600; }}
+    QPushButton#sidebarToggle:hover {{ color: {c['ink']}; background: {c['button']}; }}
     QPushButton#pageNav {{ color: {c['muted']}; background: transparent; border: 1px solid transparent; padding: 6px 16px; min-height: 20px; font-weight: 500; }}
     QPushButton#pageNav:hover {{ color: {c['ink']}; background: {c['button']}; }}
     QPushButton#pageNav:checked {{ color: {c['ink']}; background: {c['paper']}; border-color: {c['line']}; font-weight: 600; }}

@@ -14,8 +14,9 @@ Published Windows ZIPs, when available, will be listed on [GitHub Releases](http
 
 - Read local TXT and unencrypted, reflowable EPUB files, including common EPUB illustrations, tables of contents, internal links, and print page lists.
 - Organize books into a local bookshelf, recent reading, and user-created categories. Adding a book copies it into the bookshelf and leaves the original file untouched.
+- Collapse the reading contents panel to give the current page more room.
 - Use bookmarks and notes, book metadata and covers, adjustable typography, Chinese or English UI, light/dark/sepia themes, and configurable keyboard shortcuts.
-- Focus mode removes the reader chrome and supports a transparent or sampled desktop-color background.
+- Focus mode removes the reader chrome and supports a transparent or sampled desktop-color background. Hold the configurable window-control key (Alt by default) to show its outline and temporarily move or resize it.
 - Resume reading from the last saved position. The app does not upload book content or local state.
 
 ## Run or build from source (Windows)
@@ -32,10 +33,10 @@ py -3.12 -m venv .venv
 To build a portable onedir package:
 
 ```powershell
-.\scripts\build.ps1 -OutputRoot dist/releases/0.1.2
+.\scripts\build.ps1 -OutputRoot dist/releases/0.1.3
 ```
 
-The executable and its required runtime files are written to `dist/releases/0.1.2/QuietReader/`.
+The executable and its required runtime files are written to `dist/releases/0.1.3/QuietReader/`.
 
 ## Supported formats and limits
 

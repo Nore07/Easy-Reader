@@ -156,6 +156,11 @@ class MainWindow(QMainWindow):
         self.quitting = False
         self.closed = False
         self.focus_mode = False
+        self.sidebar_collapsed = False
+        self._focus_adjust_active = False
+        self._focus_adjust_drag = None
+        self._focus_system_drag_active = False
+        self._focus_cursor_override = False
         self._chrome_visibility = {}
         self.status_source = ("离线优先。添加书籍即可开始阅读。", {})
         self.tray = None
@@ -172,6 +177,9 @@ class MainWindow(QMainWindow):
         self.save_timer.setInterval(350)
         self.save_timer.timeout.connect(self.save_state)
         self._build_ui()
+        app = QApplication.instance()
+        if app:
+            app.installEventFilter(self)
         if enable_system:
             self._setup_system()
         self.apply_settings(self.settings)
@@ -281,7 +289,16 @@ class MainWindow(QMainWindow):
         self.sidebar.setFixedWidth(220)
         side = QVBoxLayout(self.sidebar)
         side.setContentsMargins(10, 12, 10, 12)
-        side.addWidget(self._label("我的阅读", "eyebrow"))
+        heading = QWidget()
+        heading_layout = QHBoxLayout(heading)
+        heading_layout.setContentsMargins(2, 0, 0, 2)
+        self.sidebar_title = self._label("我的阅读", "eyebrow")
+        heading_layout.addWidget(self.sidebar_title)
+        heading_layout.addStretch(1)
+        self.sidebar_toggle = self._window_control("<<<", self.toggle_sidebar, "收起目录栏", "sidebarToggle")
+        self.sidebar_toggle.setFixedSize(34, 26)
+        heading_layout.addWidget(self.sidebar_toggle)
+        side.addWidget(heading)
         self.reading_tabs = QTabWidget()
         self.chapters = QListWidget()
         self.chapters.setAccessibleName("书籍目录")
@@ -320,7 +337,9 @@ class MainWindow(QMainWindow):
         self.reading_tabs.setTabVisible(3, False)
         self.reading_tabs.setTabVisible(4, False)
         side.addWidget(self.reading_tabs)
-        side.addWidget(self._label("本地阅读 · 无需联网", "status"))
+        self.sidebar_status = self._label("本地阅读 · 无需联网", "status")
+        side.addWidget(self.sidebar_status)
+        self._update_sidebar_toggle()
         body.addWidget(self.sidebar)
         self.main_pages = QStackedWidget()
         self.reader_page = QWidget()
@@ -1076,8 +1095,27 @@ class MainWindow(QMainWindow):
             self.shelf_button.setChecked(not reading_active)
         if hasattr(self, "sidebar"):
             if reading_active and not self.focus_mode:
-                self.sidebar.setFixedWidth(max(150, min(220, int(self.width() * 0.30))))
+                width = 58 if self.sidebar_collapsed else max(150, min(220, int(self.width() * 0.30)))
+                self.sidebar.setFixedWidth(width)
             self.sidebar.setVisible(reading_active and not self.focus_mode)
+
+    def _update_sidebar_toggle(self):
+        if not hasattr(self, "sidebar_toggle"):
+            return
+        self.sidebar_title.setVisible(not self.sidebar_collapsed)
+        self.reading_tabs.setVisible(not self.sidebar_collapsed)
+        self.sidebar_status.setVisible(not self.sidebar_collapsed)
+        self.sidebar_toggle.setText(">>>" if self.sidebar_collapsed else "<<<")
+        label = "展开目录栏" if self.sidebar_collapsed else "收起目录栏"
+        self.sidebar_toggle.setToolTip(self.t(label))
+        self.sidebar_toggle.setAccessibleName(self.t(label))
+        self._sync_page_navigation()
+
+    def toggle_sidebar(self, checked=False):
+        if self.focus_mode or self.main_pages.currentWidget() is not self.reader_page:
+            return
+        self.sidebar_collapsed = not self.sidebar_collapsed
+        self._update_sidebar_toggle()
 
     def show_reading_page(self, checked=False):
         if self.focus_mode:
@@ -1130,9 +1168,9 @@ class MainWindow(QMainWindow):
         entering = not self.focus_mode
         if entering:
             self.show_reading_page()
-            self._pre_focus_geometry = self.geometry()
             self._pre_focus_maximized = self.isMaximized()
             self._chrome_visibility = {widget: not widget.isHidden() for widget in self.chrome_widgets}
+        self._set_focus_adjust_active(False)
         self.focus_mode = entering
         self.reader.focus_mode = entering
         self.setMinimumSize(180 if entering else 380, 100 if entering else 360)
@@ -1141,10 +1179,8 @@ class MainWindow(QMainWindow):
             for widget, visible in self._chrome_visibility.items():
                 widget.setVisible(visible)
         self.apply_settings(self.settings)
-        if not entering:
-            self.setGeometry(self._pre_focus_geometry)
-            if self._pre_focus_maximized:
-                self.showMaximized()
+        if not entering and self._pre_focus_maximized:
+            self.showMaximized()
         self.raise_()
         self.activateWindow()
         self.reader.setFocus()
@@ -1206,6 +1242,7 @@ class MainWindow(QMainWindow):
         self._sync_chapter_button_labels()
         self.encoding.setItemText(0, self.t("自动识别"))
         self.focus_button.setText(self.t("退出专注" if self.focus_mode else "专注"))
+        self._update_sidebar_toggle()
         if hasattr(self, "tray_focus_action"):
             self.tray_focus_action.setText(self.t("退出专注模式" if self.focus_mode else "进入专注模式"))
             self.tray_focus_action.setChecked(self.focus_mode)
@@ -1218,7 +1255,11 @@ class MainWindow(QMainWindow):
     def _apply_window_style(self):
         alpha = round(self.settings.opacity * 255) if self.focus_mode else 255
         background_color = self.settings.background_color if self.focus_mode else ""
-        self.setStyleSheet(stylesheet(colors(self.settings.theme, background_color), alpha, borderless=self.focus_mode))
+        self.setStyleSheet(stylesheet(
+            colors(self.settings.theme, background_color), alpha,
+            borderless=self.focus_mode,
+            resize_outline=self.focus_mode and self._focus_adjust_active,
+        ))
 
     def apply_settings(self, settings):
         self.settings = Settings.from_dict(settings.to_dict())
@@ -1356,7 +1397,7 @@ class MainWindow(QMainWindow):
             return
         self.store.state["settings"] = self.settings.to_dict()
         if not self.isMinimized() and not self.isMaximized():
-            bounds = self._pre_focus_geometry if self.focus_mode else self.geometry()
+            bounds = self.geometry()
             self.store.state["window"] = list(bounds.getRect())
         if self.book:
             section = self.book.sections[self.section_index]
@@ -1387,22 +1428,139 @@ class MainWindow(QMainWindow):
         if hasattr(self, "save_timer"):
             self.schedule_save()
 
-    def mousePressEvent(self, event):
-        if self.focus_mode and event.button() == Qt.MouseButton.LeftButton:
-            x, y = event.position().x(), event.position().y()
-            edges = Qt.Edge(0)
-            if x < 8:
-                edges |= Qt.Edge.LeftEdge
-            elif x > self.width() - 8:
-                edges |= Qt.Edge.RightEdge
-            if y < 8:
-                edges |= Qt.Edge.TopEdge
-            elif y > self.height() - 8:
-                edges |= Qt.Edge.BottomEdge
-            if edges and self.windowHandle():
-                self.windowHandle().startSystemResize(edges)
-                return
-        super().mousePressEvent(event)
+    def _focus_adjust_key(self):
+        return {
+            "Alt": Qt.Key.Key_Alt,
+            "Ctrl": Qt.Key.Key_Control,
+            "Shift": Qt.Key.Key_Shift,
+        }.get(self.settings.focus_adjust_key, Qt.Key.Key_Alt)
+
+    def _focus_edges_at(self, global_position):
+        if self.isMaximized() or self.isFullScreen():
+            return Qt.Edge(0)
+        position = self.mapFromGlobal(global_position)
+        margin = 9
+        edges = Qt.Edge(0)
+        if position.x() < margin:
+            edges |= Qt.Edge.LeftEdge
+        elif position.x() >= self.width() - margin:
+            edges |= Qt.Edge.RightEdge
+        if position.y() < margin:
+            edges |= Qt.Edge.TopEdge
+        elif position.y() >= self.height() - margin:
+            edges |= Qt.Edge.BottomEdge
+        return edges
+
+    @staticmethod
+    def _focus_cursor_for_edges(edges):
+        left = bool(edges & Qt.Edge.LeftEdge)
+        right = bool(edges & Qt.Edge.RightEdge)
+        top = bool(edges & Qt.Edge.TopEdge)
+        bottom = bool(edges & Qt.Edge.BottomEdge)
+        if (top and left) or (bottom and right):
+            return Qt.CursorShape.SizeFDiagCursor
+        if (top and right) or (bottom and left):
+            return Qt.CursorShape.SizeBDiagCursor
+        if left or right:
+            return Qt.CursorShape.SizeHorCursor
+        if top or bottom:
+            return Qt.CursorShape.SizeVerCursor
+        return Qt.CursorShape.ArrowCursor
+
+    def _set_focus_adjust_active(self, active):
+        active = bool(active and self.focus_mode)
+        if active == self._focus_adjust_active:
+            return
+        self._focus_adjust_active = active
+        self._focus_adjust_drag = None
+        self._focus_system_drag_active = False
+        if active:
+            QApplication.setOverrideCursor(Qt.CursorShape.ArrowCursor)
+            self._focus_cursor_override = True
+        elif self._focus_cursor_override:
+            QApplication.restoreOverrideCursor()
+            self._focus_cursor_override = False
+        self._apply_window_style()
+
+    def _update_focus_adjust_cursor(self, global_position):
+        if not self._focus_cursor_override:
+            return
+        cursor = self._focus_cursor_for_edges(self._focus_edges_at(global_position))
+        QApplication.changeOverrideCursor(cursor)
+
+    def _resize_focus_geometry(self, global_position):
+        if not self._focus_adjust_drag:
+            return
+        origin, geometry, edges = self._focus_adjust_drag
+        dx = global_position.x() - origin.x()
+        dy = global_position.y() - origin.y()
+        left, top, width, height = geometry.x(), geometry.y(), geometry.width(), geometry.height()
+        minimum_width, minimum_height = self.minimumWidth(), self.minimumHeight()
+        if edges & Qt.Edge.LeftEdge:
+            left += dx
+            width -= dx
+            if width < minimum_width:
+                left -= minimum_width - width
+                width = minimum_width
+        elif edges & Qt.Edge.RightEdge:
+            width = max(minimum_width, width + dx)
+        if edges & Qt.Edge.TopEdge:
+            top += dy
+            height -= dy
+            if height < minimum_height:
+                top -= minimum_height - height
+                height = minimum_height
+        elif edges & Qt.Edge.BottomEdge:
+            height = max(minimum_height, height + dy)
+        self.setGeometry(left, top, width, height)
+
+    def eventFilter(self, watched, event):
+        event_type = event.type()
+        if event_type == QEvent.Type.ApplicationDeactivate or (event_type == QEvent.Type.WindowDeactivate and watched is self):
+            self._set_focus_adjust_active(False)
+            return False
+        if not self.focus_mode:
+            return super().eventFilter(watched, event)
+
+        if (
+            isinstance(watched, QWidget)
+            and watched.window() is self
+            and event_type in (QEvent.Type.KeyPress, QEvent.Type.KeyRelease)
+            and event.key() == self._focus_adjust_key()
+        ):
+            self._set_focus_adjust_active(event_type == QEvent.Type.KeyPress)
+            return False
+
+        if not isinstance(watched, QWidget) or watched.window() is not self:
+            return super().eventFilter(watched, event)
+
+        if event_type == QEvent.Type.MouseButtonPress and event.button() == Qt.MouseButton.LeftButton and self._focus_adjust_active:
+            global_position = event.globalPosition().toPoint()
+            edges = self._focus_edges_at(global_position)
+            handle = self.windowHandle()
+            if edges and handle and handle.startSystemResize(edges):
+                self._focus_system_drag_active = True
+            elif not edges and handle and handle.startSystemMove():
+                self._focus_system_drag_active = True
+            else:
+                self._focus_adjust_drag = (global_position, self.geometry(), edges)
+            event.accept()
+            return True
+
+        if event_type == QEvent.Type.MouseMove and self._focus_adjust_active:
+            global_position = event.globalPosition().toPoint()
+            if self._focus_adjust_drag and event.buttons() & Qt.MouseButton.LeftButton:
+                self._resize_focus_geometry(global_position)
+                event.accept()
+                return True
+            if not event.buttons() & Qt.MouseButton.LeftButton:
+                self._focus_system_drag_active = False
+            if not self._focus_system_drag_active:
+                self._update_focus_adjust_cursor(global_position)
+        elif event_type == QEvent.Type.MouseButtonRelease and event.button() == Qt.MouseButton.LeftButton:
+            self._focus_adjust_drag = None
+            self._focus_system_drag_active = False
+        return super().eventFilter(watched, event)
 
     def closeEvent(self, event):
         if not self.quitting and self.settings.close_to_tray and self.tray and self.tray.isVisible():
@@ -1418,6 +1576,10 @@ class MainWindow(QMainWindow):
     def shutdown(self):
         if self.closed:
             return
+        self._set_focus_adjust_active(False)
+        app = QApplication.instance()
+        if app:
+            app.removeEventFilter(self)
         self.save_state()
         self.save_timer.stop()
         self.closed = True
