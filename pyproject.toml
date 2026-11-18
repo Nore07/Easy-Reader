@@ -1,13 +1,33 @@
 [build-system]
-requires = ["setuptools>=75"]
+requires = ["setuptools>=77"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "quietreader"
 version = "0.1.5"
+readme = "README.md"
+license = "Apache-2.0"
+license-files = ["LICENSE"]
 description = "安静、离线优先的 Windows 本地阅读器"
 requires-python = ">=3.12"
+keywords = ["ebook", "epub", "txt", "reader", "PySide6", "Windows"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Environment :: Win32 (MS Windows)",
+    "Intended Audience :: End Users/Desktop",
+    "Operating System :: Microsoft :: Windows",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Multimedia :: Graphics :: Viewers",
+    "Topic :: Text Processing :: General",
+]
 dependencies = ["PySide6-Essentials>=6.8,<6.13", "charset-normalizer>=3.4,<4", "defusedxml>=0.7.1,<1"]
+
+[project.urls]
+Homepage = "https://github.com/Nore07/Quiet-Reader"
+Repository = "https://github.com/Nore07/Quiet-Reader"
+Issues = "https://github.com/Nore07/Quiet-Reader/issues"
 
 [project.optional-dependencies]
 build = ["pyinstaller>=6,<7"]
@@ -17,3 +37,6 @@ quietreader = "quietreader.__main__:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.setuptools.package-data]
+quietreader = ["assets/*.png", "assets/*.ico"]

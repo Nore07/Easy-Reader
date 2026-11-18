@@ -2,9 +2,10 @@ from dataclasses import asdict, replace
 from datetime import datetime, timezone
 from pathlib import Path
 import os
+import sys
 
 from PySide6.QtCore import QEvent, QObject, QPoint, QRunnable, QThreadPool, Qt, QTimer, Signal
-from PySide6.QtGui import QAction, QColor, QGuiApplication, QIcon, QKeySequence, QPainter, QPen, QPixmap, QPolygon, QShortcut
+from PySide6.QtGui import QAction, QGuiApplication, QIcon, QKeySequence, QShortcut
 from PySide6.QtWidgets import (
     QApplication, QComboBox, QDialog, QFileDialog, QHBoxLayout, QLabel, QInputDialog, QMessageBox,
     QListWidget, QListWidgetItem, QMainWindow, QMenu, QPushButton, QStackedWidget,
@@ -28,19 +29,11 @@ from quietreader.ui.shelf import ShelfPanel
 
 
 def book_icon():
-    image = QPixmap(64, 64)
-    image.fill(Qt.GlobalColor.transparent)
-    painter = QPainter(image)
-    painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-    painter.setPen(Qt.PenStyle.NoPen)
-    painter.setBrush(QColor("#315743"))
-    painter.drawRoundedRect(2, 2, 60, 60, 14, 14)
-    painter.setPen(QPen(QColor("#f5f3eb"), 3))
-    painter.drawLine(32, 19, 32, 47)
-    points = [(13, 18), (25, 18), (32, 23), (39, 18), (51, 18), (51, 44), (39, 44), (32, 49), (25, 44), (13, 44), (13, 18)]
-    painter.drawPolyline(QPolygon([QPoint(x, y) for x, y in points]))
-    painter.end()
-    return QIcon(image)
+    if getattr(sys, "frozen", False):
+        asset = Path(sys._MEIPASS) / "quietreader" / "assets" / "quietreader.png"
+    else:
+        asset = Path(__file__).resolve().parents[1] / "assets" / "quietreader.png"
+    return QIcon(str(asset))
 
 
 class ImportSignals(QObject):
@@ -1259,12 +1252,13 @@ class MainWindow(QMainWindow):
 
     def _apply_window_style(self):
         if self.focus_mode:
-            if self._focus_adjust_active:
-                # Keep the background nearly invisible but hit-testable while
-                # dragging. The saved focus opacity is restored on key release.
+            opacity = self.settings.opacity if self._focus_opacity_override is None else self._focus_opacity_override
+            if self._focus_adjust_active and opacity == 0:
+                # A fully transparent surface can miss mouse input. Make only
+                # that case hit-testable while Alt is held; preserve every
+                # already-visible opacity and restore zero on key release.
                 alpha = 255 * 0.01
             else:
-                opacity = self.settings.opacity if self._focus_opacity_override is None else self._focus_opacity_override
                 alpha = round(opacity * 255)
         else:
             alpha = 255

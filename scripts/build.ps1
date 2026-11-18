@@ -22,7 +22,9 @@ try {
     # Restrict DLL discovery to Python, Qt's own hook paths and Windows.
     # Unrelated tools on PATH may ship incompatible ICU/OpenSSL DLL names.
     $env:PATH = "$projectRoot\.venv\Scripts;$pythonRoot;$pythonRoot\DLLs;$env:SystemRoot\System32;$env:SystemRoot"
-    & .\.venv\Scripts\python.exe -m PyInstaller --clean --noconfirm --windowed --onedir --name QuietReader --paths src --distpath $resolvedOutput --workpath build run.py
+    & .\.venv\Scripts\python.exe scripts/build_icon.py
+    if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+    & .\.venv\Scripts\python.exe -m PyInstaller --clean --noconfirm --windowed --onedir --name QuietReader --icon src\quietreader\assets\quietreader.ico --add-data "src\quietreader\assets\quietreader.png;quietreader\assets" --paths src --distpath $resolvedOutput --workpath build run.py
     if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 }
 finally {
@@ -30,4 +32,5 @@ finally {
 }
 & .\.venv\Scripts\python.exe scripts/collect_notices.py --app-dir $appDirectory
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+Copy-Item -LiteralPath (Join-Path $projectRoot 'LICENSE') -Destination (Join-Path $appDirectory 'LICENSE') -Force
 Write-Host ('Built: ' + (Join-Path $appDirectory 'QuietReader.exe') + ' (keep the entire directory)')

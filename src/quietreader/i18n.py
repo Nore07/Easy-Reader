@@ -23,7 +23,7 @@ EN = {
     "专注模式窗口调整键": "Focus mode window control key",
     "专注模式下按住此键，窗口内拖动可移动；靠近边缘拖动可缩放。默认使用 Alt。": "In Focus mode, hold this key and drag anywhere inside the window to move it; drag an edge to resize. Alt is the default.",
     "切换专注模式透明度": "Toggle Focus mode background opacity",
-    "专注模式下按快捷键在 0% 和 100% 背景透明度间切换，默认 F9；按住调整键期间，背景临时设为 1% 以接收鼠标操作，松开后恢复原透明度。": "In Focus mode, press this shortcut to toggle the background between 0% and 100% opacity (F9 by default). While the window control key is held, the background temporarily uses 1% opacity for mouse input, then returns to its previous opacity on release.",
+    "专注模式下按快捷键在 0% 和 100% 背景透明度间切换，默认 F9；按住调整键时，仅当背景为 0% 才临时提高到 1% 以接收鼠标操作，松开后恢复；其他透明度保持不变。": "In Focus mode, press this shortcut to toggle the background between 0% and 100% opacity (F9 by default). While the window control key is held, only a fully transparent background is temporarily raised to 1% for mouse input, then restored on release. Other opacity levels remain unchanged.",
     "Alt": "Alt", "Ctrl": "Ctrl", "Shift": "Shift",
     "进入阅读页面，查看目录、书签和资料": "Go to Reading to view contents, bookmarks, and book info",
     "浏览最近阅读、所有书籍和分类": "Browse recent, all books, and categories",
