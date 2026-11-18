@@ -24,10 +24,11 @@ def stylesheet(palette, alpha=255):
     c = palette
     paper = c["paper"].lstrip("#")
     rgb = ",".join(str(int(paper[i:i+2], 16)) for i in (0, 2, 4))
+    surface_frame = f"border: 1px solid {c['line']}; border-radius: 9px;" if alpha else "border: none; border-radius: 0;"
     return f"""
     QWidget {{ color: {c['ink']}; font-family: 'Microsoft YaHei'; font-size: 13px; }}
     QMainWindow {{ background: transparent; }}
-    QWidget#surface {{ background: rgba({rgb},{alpha}); border: 1px solid {c['line'] if alpha else 'transparent'}; border-radius: 9px; }}
+    QWidget#surface {{ background: rgba({rgb},{alpha}); {surface_frame} }}
     QWidget#sidebar {{ background: {c['side']}; border-radius: 7px; }}
     QLabel#brand {{ font-size: 22px; font-weight: 600; letter-spacing: 2px; color: {c['ink'] if 'on_accent' in c else c['accent']}; }}
     QLabel#eyebrow {{ font-size: 10px; letter-spacing: 2px; color: {c['muted']}; }}

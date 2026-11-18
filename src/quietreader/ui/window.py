@@ -14,6 +14,7 @@ from PySide6.QtWidgets import (
 from quietreader.content.local import ENCODINGS, ImportError as BookImportError, load_book
 from quietreader.desktop.geometry import visible_bounds
 from quietreader.desktop.hotkey import GlobalHotkey
+from quietreader.desktop.window_effects import set_window_border_hidden
 from quietreader.domain.models import Position, Settings, restore_position
 from quietreader.ui.reader import PageView
 from quietreader.ui.settings import SettingsDialog
@@ -583,6 +584,7 @@ class MainWindow(QMainWindow):
             self.show()
             self.activateWindow()
             self.reader.setFocus()
+        set_window_border_hidden(self, self.focus_mode)
         self._configure_hotkeys()
         if self.focus_mode:
             for widget in self.chrome_widgets:

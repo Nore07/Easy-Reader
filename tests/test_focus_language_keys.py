@@ -1,3 +1,6 @@
+import ctypes
+from types import SimpleNamespace
+
 import pytest
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QColor, QImage
@@ -7,9 +10,11 @@ from PySide6.QtWidgets import QWidget
 from quietreader.domain.models import Book, Section, Settings
 from quietreader.keys import normalize_binding, windows_hotkey
 from quietreader.i18n import tr
+from quietreader.desktop import window_effects
 from quietreader.persistence.store import StateStore
 from quietreader.ui.key_capture import KeyCaptureDialog
 from quietreader.ui.settings import SettingsDialog
+from quietreader.ui.theme import colors, stylesheet
 from quietreader.ui.window import MainWindow
 
 
@@ -103,6 +108,64 @@ def test_focus_restores_floating_preferences_and_does_not_start_focused(app, tmp
     assert not again.focus_mode
     assert again.settings.opacity == 0.25
     again.shutdown()
+
+
+def test_focus_suppresses_native_window_border_and_restores_it(app, tmp_path, monkeypatch):
+    import quietreader.ui.window as window_module
+
+    calls = []
+    monkeypatch.setattr(
+        window_module,
+        "set_window_border_hidden",
+        lambda target, hidden: calls.append((target, hidden)),
+        raising=False,
+    )
+    window = MainWindow(StateStore(tmp_path), enable_system=False)
+    window.show()
+    window._loaded(Book("one", "none.txt", "Test", sections=[Section("one", "One", "Text " * 100)]))
+
+    window.toggle_focus()
+    assert calls[-1] == (window, True)
+    window.toggle_focus()
+    assert calls[-1] == (window, False)
+
+    window.shutdown()
+
+
+def test_transparent_reader_surface_has_no_inner_frame():
+    transparent = stylesheet(colors("dark"), 0)
+
+    assert "QWidget#surface { background: rgba(32,43,40,0); border: none; border-radius: 0; }" in transparent
+
+
+def test_native_border_helper_hides_and_restores_dwm_border(monkeypatch):
+    values = []
+
+    def set_attribute(hwnd, attribute, value, size):
+        color = ctypes.cast(value, ctypes.POINTER(ctypes.c_uint32)).contents.value
+        values.append((hwnd.value, attribute, color, size))
+        return 0
+
+    monkeypatch.setattr(window_effects.sys, "platform", "win32")
+    monkeypatch.setattr(
+        window_effects.ctypes,
+        "windll",
+        SimpleNamespace(dwmapi=SimpleNamespace(DwmSetWindowAttribute=set_attribute)),
+        raising=False,
+    )
+
+    class NativeHandle:
+        def winId(self):
+            return 0x1234
+
+    class Window:
+        def windowHandle(self):
+            return NativeHandle()
+
+    window = Window()
+    assert window_effects.set_window_border_hidden(window, True)
+    assert window_effects.set_window_border_hidden(window, False)
+    assert values == [(0x1234, 34, 0xFFFFFFFE, 4), (0x1234, 34, 0xFFFFFFFF, 4)]
 
 
 def test_recording_button_combination_and_focus_toggle_key(app, tmp_path):

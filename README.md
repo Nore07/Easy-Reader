@@ -82,7 +82,7 @@ src/quietreader/
   domain/        文档、章节、语义位置、设置
   content/       受限 TXT / EPUB 导入
   persistence/   版本化状态、原子写入、备份恢复
-  desktop/       Windows 全局热键、屏幕恢复
+  desktop/       Windows 原生热键、窗口效果、屏幕恢复
   ui/            阅读排版、窗口、主题与设置
 tests/           核心单元与 Qt 交互回归
 scripts/         GUI 冒烟、Windows 打包、原有技能检查

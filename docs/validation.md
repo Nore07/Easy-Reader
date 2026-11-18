@@ -71,3 +71,11 @@ GUI 测试仅使用脚本原创的临时文本及构造的 EPUB，不读取用�
 54 项测试通过：包含实际图片上下部像素、图文顺序、图片型 SVG 章节、无效及外部资源拒绝、面板即时预览/取消/保存及全部原功能。Windows `scripts/illustrations_smoke.py` 验证图像像素和真实阅读面板，书页及面板截图已检查。样本为自行生成的 PNG、SVG 和 EPUB，未使用用户书籍；真实出版物的复杂 CSS、SVGZ、SVG 内嵌图像等仍有限制，见 README。
 
 最终包：`dist/illustrated-release/QuietReader/QuietReader.exe`。独立 EXE 的 `--illustrated` 已实际导入含 PNG 和 SVG 的 EPUB，保存位置并正常退出；`--focus` 与 `--emergency` 回归通过。原偏好与专注的 Windows 冒烟也通过。排版预览面板不等待关闭即可在阅读器观察变化；设置仍使用版本 1，原偏好的排版字段迁移到专门入口，原数值保留。
+
+## 2026-11-18：专注模式移除窗口边框
+
+专注时除 Qt 阅读区域外，还关闭 Windows 11 DWM 绘制的原生窗口边框；退出专注恢复系统默认边框。透明阅读区域同时不再保留 CSS 边框或圆角。DWM 边框颜色属性从 Windows 11 build 22000 起支持，其他平台或不支持该属性的版本会安全忽略原生设置。
+
+57 项 pytest 通过，覆盖进入/退出时边框属性调用、DWM 隐藏/默认颜色参数及全透明表面无边框样式。Windows 11 的临时 Qt 窗口确认 DWM 隐藏边框调用成功；`scripts/focus_smoke.py` 通过。新打包 EXE 的 `--focus` 和 `--transparent` 冒烟通过。
+
+新包为 `dist/focus-border-release/QuietReader/QuietReader.exe`。DWM API 依据 [DWMWINDOWATTRIBUTE 官方文档](https://learn.microsoft.com/en-us/windows/win32/api/dwmapi/ne-dwmapi-dwmwindowattribute)；Windows 10 实机未验证。
