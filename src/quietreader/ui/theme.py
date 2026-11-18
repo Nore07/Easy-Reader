@@ -24,6 +24,7 @@ def stylesheet(palette, alpha=255, borderless=False, resize_outline=False):
     c = palette
     paper = c["paper"].lstrip("#")
     rgb = ",".join(str(int(paper[i:i+2], 16)) for i in (0, 2, 4))
+    alpha_percent = alpha * 100 / 255
     if resize_outline:
         surface_frame = f"border: 1px dashed {c['accent']}; border-radius: 2px;"
     else:
@@ -31,7 +32,7 @@ def stylesheet(palette, alpha=255, borderless=False, resize_outline=False):
     return f"""
     QWidget {{ color: {c['ink']}; font-family: 'Microsoft YaHei'; font-size: 13px; }}
     QMainWindow {{ background: transparent; }}
-    #surface {{ background: rgba({rgb},{alpha}); {surface_frame} }}
+    #surface {{ background: rgba({rgb},{alpha_percent:.3f}%); {surface_frame} }}
     QWidget#sidebar {{ background: {c['side']}; border-radius: 7px; }}
     QWidget#pageNavigation {{ background: {c['side']}; border-radius: 7px; }}
     QWidget#titleBar {{ background: transparent; }}

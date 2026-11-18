@@ -265,8 +265,11 @@ class MainWindow(QMainWindow):
         self.shelf_button = self._button("书架", self.show_shelf_page, True)
         self.shelf_button.setObjectName("pageNav")
         self.shelf_button.setToolTip("浏览最近阅读、所有书籍和分类")
+        self.sidebar_toggle = self._window_control("<<<", self.toggle_sidebar, "收起目录栏", "sidebarToggle")
+        self.sidebar_toggle.setFixedSize(22, 22)
         page_navigation_layout.addWidget(self.reading_button)
         page_navigation_layout.addWidget(self.shelf_button)
+        page_navigation_layout.addWidget(self.sidebar_toggle)
         tools.addWidget(self.page_navigation)
         tools.addStretch(1)
         self.pin_button = self._button("置顶", self.toggle_pin, True)
@@ -290,16 +293,7 @@ class MainWindow(QMainWindow):
         self.sidebar.setFixedWidth(220)
         side = QVBoxLayout(self.sidebar)
         side.setContentsMargins(10, 12, 10, 12)
-        heading = QWidget()
-        heading_layout = QHBoxLayout(heading)
-        heading_layout.setContentsMargins(2, 0, 0, 2)
-        self.sidebar_title = self._label("我的阅读", "eyebrow")
-        heading_layout.addWidget(self.sidebar_title)
-        heading_layout.addStretch(1)
-        self.sidebar_toggle = self._window_control("<<<", self.toggle_sidebar, "收起目录栏", "sidebarToggle")
-        self.sidebar_toggle.setFixedSize(22, 20)
-        heading_layout.addWidget(self.sidebar_toggle)
-        side.addWidget(heading)
+        side.addWidget(self._label("我的阅读", "eyebrow"))
         self.reading_tabs = QTabWidget()
         self.chapters = QListWidget()
         self.chapters.setAccessibleName("书籍目录")
@@ -1098,17 +1092,16 @@ class MainWindow(QMainWindow):
             self.reading_button.setChecked(reading_active)
             self.shelf_button.setChecked(not reading_active)
         if hasattr(self, "sidebar"):
-            if reading_active and not self.focus_mode:
-                width = 46 if self.sidebar_collapsed else max(150, min(220, int(self.width() * 0.30)))
+            if reading_active and not self.focus_mode and not self.sidebar_collapsed:
+                width = max(150, min(220, int(self.width() * 0.30)))
                 self.sidebar.setFixedWidth(width)
-            self.sidebar.setVisible(reading_active and not self.focus_mode)
+            self.sidebar.setVisible(reading_active and not self.focus_mode and not self.sidebar_collapsed)
+        if hasattr(self, "sidebar_toggle"):
+            self.sidebar_toggle.setVisible(reading_active and not self.focus_mode)
 
     def _update_sidebar_toggle(self):
         if not hasattr(self, "sidebar_toggle"):
             return
-        self.sidebar_title.setVisible(not self.sidebar_collapsed)
-        self.reading_tabs.setVisible(not self.sidebar_collapsed)
-        self.sidebar_status.setVisible(not self.sidebar_collapsed)
         self.sidebar_toggle.setText(">>>" if self.sidebar_collapsed else "<<<")
         label = "展开目录栏" if self.sidebar_collapsed else "收起目录栏"
         self.sidebar_toggle.setToolTip(self.t(label))
@@ -1266,13 +1259,13 @@ class MainWindow(QMainWindow):
 
     def _apply_window_style(self):
         if self.focus_mode:
-            opacity = self.settings.opacity if self._focus_opacity_override is None else self._focus_opacity_override
-            alpha = round(opacity * 255)
             if self._focus_adjust_active:
-                # Windows passes mouse input through layered-window pixels whose
-                # alpha is zero. A one-step alpha keeps the transparent surface
-                # hit-testable only while its adjustment key is held.
-                alpha = max(1, alpha)
+                # Keep the background nearly invisible but hit-testable while
+                # dragging. The saved focus opacity is restored on key release.
+                alpha = 255 * 0.01
+            else:
+                opacity = self.settings.opacity if self._focus_opacity_override is None else self._focus_opacity_override
+                alpha = round(opacity * 255)
         else:
             alpha = 255
         background_color = self.settings.background_color if self.focus_mode else ""
