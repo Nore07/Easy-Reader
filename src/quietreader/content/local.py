@@ -20,6 +20,7 @@ MAX_EPUB_ANCHORS = 100000
 MAX_EPUB_LINKS = 50000
 MAX_EPUB_NAV_ENTRIES = 20000
 MAX_EPUB_FORMAT_RANGES = 50000
+MAX_EPUB_IMAGE_REFERENCES = 4096
 ENCODINGS = ("auto", "utf-8", "utf-8-sig", "utf-16", "utf-16-le", "utf-16-be", "gb18030", "gbk")
 
 
@@ -534,13 +535,12 @@ def _load_epub(path: Path) -> tuple[str, str, list[Section]]:
                     if source:
                         image_path = _zip_path(posixpath.dirname(item_path), source)
                         image_count += 1
-                        if image_count > 512:
+                        if image_count > MAX_EPUB_IMAGE_REFERENCES:
                             raise ImportError("EPUB 插图数量超过当前支持范围。")
                         payload = image_cache.get(image_path)
                         if payload is None:
-                            payload = archive.read(image_path)
+                            payload = _validate_image_payload(archive.read(image_path))
                             image_cache[image_path] = payload
-                        _validate_image_payload(payload)
                         pictures.append(payload)
                         tail = node.tail
                         attributes = dict(node.attrib)
