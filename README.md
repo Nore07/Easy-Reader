@@ -106,7 +106,7 @@ py -3.12 -m venv .venv
 
 ## 参与项目
 
-欢迎通过 [GitHub Issues](https://github.com/Nore07/Quiet-Reader/issues) 报告问题或提出改进建议，也欢迎提交 Pull Request。
+欢迎通过 [GitHub Issues](https://github.com/Nore07/Quiet-Reader/issues) 报告问题或提出改进建议。协作分支、提交和 Pull Request 流程见[贡献指南](CONTRIBUTING.md)。
 
 ## 许可
 

@@ -106,7 +106,7 @@ When a copied `data` folder is used from a new application directory, startup ch
 
 ## Contributing
 
-Report bugs and suggest improvements through [GitHub Issues](https://github.com/Nore07/Quiet-Reader/issues). Pull Requests are welcome.
+Report bugs and suggest improvements through [GitHub Issues](https://github.com/Nore07/Quiet-Reader/issues). See the [contribution guide](CONTRIBUTING.md) for branch, commit, and pull request workflow.
 
 ## License
 
