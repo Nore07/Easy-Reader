@@ -64,6 +64,8 @@ EN = {
     "{encoding} · {count} 个章节 / 分段 · 进度自动保存{author}": "{encoding} · {count} chapters / sections · Progress saved automatically{author}",
     "{page} / {pages} 页 · 本章 {progress}": "Page {page} / {pages} · Chapter {progress}",
     "全书进度：{progress}": "Book progress: {progress}", "全书进度：--": "Book progress: --",
+    "{chapter} · 全书 {progress}": "{chapter} · Book {progress}",
+    "尚未开始阅读 · 全书 0%": "Not started · Book 0%", "打开书籍后更新进度": "Open this book to refresh its progress",
     "书内链接目标不可用。": "This link points to a location that is unavailable in the reading order.",
     "保存失败，请检查用户数据目录的权限和可用空间。": "Could not save. Check data directory permissions and free space.",
     "切换阅读与书架页面": "Switch between reading and bookshelf",

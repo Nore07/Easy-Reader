@@ -1,6 +1,7 @@
+from math import isfinite
 from pathlib import Path
 
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import QSize, Qt, Signal
 from PySide6.QtWidgets import (
     QComboBox, QHBoxLayout, QLabel, QListWidget, QListWidgetItem, QPushButton,
     QTabWidget, QVBoxLayout, QWidget,
@@ -134,6 +135,7 @@ class ShelfPanel(QWidget):
         widget = QListWidget()
         widget.setObjectName("shelfList")
         widget.setAccessibleName(accessible_name)
+        widget.setWordWrap(True)
         if openable:
             widget.itemActivated.connect(self._open_item)
         return widget
@@ -210,15 +212,25 @@ class ShelfPanel(QWidget):
         self.category_list.setCurrentRow(row)
         self._refresh_category_books()
 
-    @staticmethod
-    def _fill(widget, records):
+    def _fill(self, widget, records):
         widget.clear()
         for record in records:
-            item = QListWidgetItem(record.get("title") or Path(record["path"]).stem)
-            if record.get("author"):
-                item.setToolTip(f"{record['author']}\n{record['path']}")
+            title = record.get("title") or Path(record["path"]).stem
+            chapter = record.get("reading_chapter")
+            progress = record.get("reading_progress")
+            if isinstance(chapter, str) and chapter.strip() and type(progress) in (int, float) and isfinite(progress):
+                percentage = f"{max(0, min(1, progress)):.0%}"
+                detail = tr("{chapter} · 全书 {progress}", self.language, chapter=chapter, progress=percentage)
+            elif record.get("_has_saved_position") or record.get("last_read"):
+                detail = tr("打开书籍后更新进度", self.language)
             else:
-                item.setToolTip(record["path"])
+                detail = tr("尚未开始阅读 · 全书 0%", self.language)
+            item = QListWidgetItem(f"{title}\n{detail}")
+            item.setSizeHint(QSize(0, 64))
+            if record.get("author"):
+                item.setToolTip(f"{record['author']}\n{detail}\n{record['path']}")
+            else:
+                item.setToolTip(f"{detail}\n{record['path']}")
             item.setData(Qt.ItemDataRole.UserRole, record.get("id", ""))
             widget.addItem(item)
 

@@ -767,8 +767,13 @@ class MainWindow(QMainWindow):
     def _refresh_shelf(self):
         if not hasattr(self, "shelf"):
             return
+        positions = self.store.state.get("positions", {})
+        records = [
+            {**record, "_has_saved_position": record.get("id") in positions}
+            for record in self.store.state["books"]
+        ]
         self.shelf.refresh(
-            self.store.state["books"], self.shelf_manager.categories(),
+            records, self.shelf_manager.categories(),
             self.shelf_manager.category_for_path, self.settings.language,
         )
 
@@ -837,6 +842,7 @@ class MainWindow(QMainWindow):
         record.update({"id": book.id, "path": book.path, "title": book.title, "author": book.author, "encoding": book.encoding, "last_read": datetime.now(timezone.utc).isoformat()})
         self.store.state["books"] = [record] + [item for item in self.store.state["books"] if item["id"] != book.id][:MAX_BOOK_RECORDS - 1]
         self.store.state["last_book"] = book.id
+        self._update_progress()
         self._refresh_shelf()
         self.set_status("{encoding} · {count} 个章节 / 分段 · 进度自动保存{author}", encoding=book.encoding, count=len(book.sections), author=f" · {book.author}" if book.author else "")
         self.encoding_bar.hide()
@@ -1011,6 +1017,11 @@ class MainWindow(QMainWindow):
             if self.section_index == chapter_end - 1 and self.reader.page == self.reader.page_count - 1:
                 chapter_fraction = 1
 
+            record = next((item for item in self.store.state["books"] if item.get("id") == self.book.id), None)
+            if record is not None:
+                record["reading_chapter"] = self.book.sections[chapter_start].title
+                record["reading_progress"] = book_fraction
+
             self.page_label.setProperty("translation_source", None)
             full_label = tr("{page} / {pages} 页 · 本章 {progress}", self.settings.language, page=self.reader.page + 1, pages=self.reader.page_count, progress=f"{chapter_fraction:.0%}")
             compact_label = f"{self.reader.page + 1}/{self.reader.page_count}"
@@ -1184,6 +1195,7 @@ class MainWindow(QMainWindow):
     def show_shelf_page(self, checked=False):
         if self.focus_mode:
             return
+        self._refresh_shelf()
         self.main_pages.setCurrentWidget(self.shelf)
         self._sync_page_navigation()
 
