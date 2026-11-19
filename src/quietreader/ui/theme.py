@@ -22,13 +22,15 @@ def colors(theme, background_color=""):
     return {"paper": "#f5f3eb", "ink": "#283c33", "muted": "#68796c", "side": "#e8ebdf", "line": "#d8ded0", "accent": "#315743", "button": "#dfe6d7", "selected": "#cfdeca"}
 
 
-def stylesheet(palette, alpha=255, borderless=False, resize_outline=False):
+def stylesheet(palette, alpha=255, borderless=False, resize_outline=False, drop_highlight=False):
     c = palette
     paper = c["paper"].lstrip("#")
     rgb = ",".join(str(int(paper[i:i+2], 16)) for i in (0, 2, 4))
     alpha_percent = alpha * 100 / 255
     if resize_outline:
         surface_frame = f"border: 1px dashed {c['accent']}; border-radius: 2px;"
+    elif drop_highlight:
+        surface_frame = f"border: 2px dashed {c['accent']}; border-radius: 9px;"
     else:
         surface_frame = f"border: 1px solid {c['line']}; border-radius: 9px;" if alpha and not borderless else "border: none; border-radius: 0;"
     return f"""

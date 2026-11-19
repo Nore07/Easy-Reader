@@ -185,6 +185,18 @@ class ShelfPanel(QWidget):
         self._category_for_path = category_for_path
         self._refresh_lists()
 
+    def reveal_book(self, book_id):
+        if not book_id or not hasattr(self, "all_books"):
+            return False
+        self.tabs.setCurrentIndex(1)
+        for row in range(self.all_books.count()):
+            item = self.all_books.item(row)
+            if item.data(Qt.ItemDataRole.UserRole) == book_id:
+                self.all_books.setCurrentRow(row)
+                self.all_books.scrollToItem(item)
+                return True
+        return False
+
     def _refresh_lists(self):
         if not hasattr(self, "all_books"):
             return
