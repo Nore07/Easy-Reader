@@ -1,6 +1,7 @@
 """Bounded local imports. No extraction, script execution or network access."""
 
 from hashlib import sha256
+from html.entities import name2codepoint as _HTML_NAMED_ENTITIES
 from html.parser import HTMLParser
 from pathlib import Path, PurePosixPath
 import posixpath
@@ -437,6 +438,54 @@ def _validate_image_payload(payload):
     return payload
 
 
+_XML_PREDEFINED_ENTITIES = frozenset({"amp", "lt", "gt", "quot", "apos"})
+_XML_DECLARATION_ENCODING = re.compile(rb'^\s*<\?xml\b[^?>]{0,256}\bencoding\s*=\s*["\']([A-Za-z0-9._-]+)["\']')
+_XHTML_ENTITY_TOKEN = re.compile(
+    r"<!--[\s\S]*?-->"
+    r"|<!\[CDATA\[[\s\S]*?\]\]>"
+    r"|<\?[\s\S]*?\?>"
+    r"|<!DOCTYPE\b[^>\[]*(?:\[[\s\S]*?\][^>]*)?>"
+    r"|&([A-Za-z][A-Za-z0-9]{0,31});"
+)
+
+
+def _decode_xml_bytes(payload: bytes) -> str:
+    if payload.startswith((b"\xff\xfe\x00\x00", b"\x00\x00\xfe\xff")):
+        return payload.decode("utf-32")
+    if payload.startswith(b"\xef\xbb\xbf"):
+        return payload.decode("utf-8-sig")
+    if payload.startswith((b"\xff\xfe", b"\xfe\xff")):
+        return payload.decode("utf-16")
+    match = _XML_DECLARATION_ENCODING.match(payload[:300])
+    encoding = match.group(1).decode("ascii") if match else "utf-8"
+    return payload.decode(encoding).lstrip("\ufeff")
+
+
+def _replace_html_named_entities(text: str) -> str:
+    def replace(match: re.Match[str]) -> str:
+        name = match.group(1)
+        if not name or name in _XML_PREDEFINED_ENTITIES:
+            return match.group(0)
+        codepoint = _HTML_NAMED_ENTITIES.get(name)
+        return f"&#{codepoint};" if codepoint is not None else match.group(0)
+
+    return _XHTML_ENTITY_TOKEN.sub(replace, text)
+
+
+def _parse_epub_xml(payload: bytes):
+    """Parse EPUB XML/XHTML safely while tolerating standard HTML named entities."""
+    try:
+        return ET.fromstring(payload)
+    except ET.ParseError as error:
+        if "undefined entity" not in str(error).lower():
+            raise
+        decoded = _decode_xml_bytes(payload)
+        rewritten = _replace_html_named_entities(decoded)
+        if rewritten == decoded:
+            raise
+        return ET.fromstring(rewritten)
+
+
 def _load_epub(path: Path) -> tuple[str, str, list[Section]]:
     try:
         with zipfile.ZipFile(path) as archive:
@@ -496,7 +545,7 @@ def _load_epub(path: Path) -> tuple[str, str, list[Section]]:
                 is_ncx = media_type == "application/x-dtbncx+xml"
                 if "nav" in item.get("properties", "").split() or is_ncx:
                     nav_path = _zip_path(base, item["href"])
-                    nav = ET.fromstring(archive.read(nav_path))
+                    nav = _parse_epub_xml(archive.read(nav_path))
                     parsed = _parse_ncx_navigation(nav, nav_path) if is_ncx else _parse_epub3_navigation(nav, nav_path)
                     pending = list(entry for entries in parsed.values() for entry in entries)
                     nav_count = 0
@@ -518,8 +567,8 @@ def _load_epub(path: Path) -> tuple[str, str, list[Section]]:
                 if item.get("media-type") not in ("application/xhtml+xml", "text/html"):
                     raise ImportError("EPUB 的阅读顺序包含不支持的内容类型。")
                 item_path = _zip_path(base, item["href"])
-                # XML decoding respects the document's declared encoding and rejects entities.
-                element = ET.fromstring(archive.read(item_path))
+                # XML decoding respects the document's declared encoding and rejects custom entities.
+                element = _parse_epub_xml(archive.read(item_path))
                 # Strip XML namespaces before the text-only HTML parser sees tags.
                 for node in element.iter():
                     node.tag = _tag(node)
