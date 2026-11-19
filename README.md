@@ -8,38 +8,45 @@ QuietReader 是一款面向 Windows 的离线本地阅读器，使用 Python 与
 
 ## 界面预览
 
+### 阅读界面
+
 ![QuietReader 阅读界面](docs/screenshots/reading.png)
 
-**阅读界面：** 展示目录、章节阅读和 EPUB 内嵌插图。
+**本地阅读：** 在侧栏查看目录、书签和资料，阅读章节内容与 EPUB 内嵌插图，并使用底部控件翻页。
 
-<details>
-<summary>书架：最近阅读、所有书籍、分类</summary>
-
-![最近阅读](docs/screenshots/bookshelf1.png)
-
-![所有书籍](docs/screenshots/bookshelf2.png)
-
-![书籍分类](docs/screenshots/bookshelf3.png)
-
-</details>
-
-<details>
-<summary>专注模式：背景融合与窗口调整</summary>
+### 专注模式
 
 ![专注模式融入取色后的桌面背景](docs/screenshots/focus1.png)
 
+**背景融合：** 先在配置中使用桌面取色器获取想融入的背景颜色，再进入专注模式；阅读窗口会尽量融入桌面背景。
+
 ![按住 Alt 显示窗口轮廓并移动或缩放](docs/screenshots/focus2.png)
 
-</details>
+**按住 Alt 调整窗口：** 专注模式下按住 `Alt` 会显示窗口轮廓，此时可拖动窗口或调整大小；松开按键后继续纯文字阅读。
 
-<details>
-<summary>配置与实时排版</summary>
+### 书架
+
+![最近阅读](docs/screenshots/bookshelf1.png)
+
+**最近阅读：** 从最近打开的书籍继续阅读，并快速回到上次阅读位置。
+
+![所有书籍](docs/screenshots/bookshelf2.png)
+
+**所有书籍：** 浏览已添加到本地书架的书籍，并从书架页面添加新书。
+
+![书籍分类](docs/screenshots/bookshelf3.png)
+
+**书籍分类：** 创建分类并整理书架中的书籍，让不同主题的藏书更容易查找。
+
+### 配置与排版
 
 ![阅读配置页面](docs/screenshots/peizhiyemian.png)
 
+**阅读器配置：** 集中设置界面语言、主题和阅读外观等偏好。
+
 ![排版调整实时预览](docs/screenshots/yuedupeizhi.png)
 
-</details>
+**实时排版：** 调整字号、行距、字距、段距或页边距时，阅读区域会同步更新，方便直接比较效果。
 
 ## 功能
 

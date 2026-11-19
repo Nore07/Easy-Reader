@@ -8,38 +8,45 @@ QuietReader is an offline-first desktop reader for Windows, built with Python an
 
 ## Screenshots
 
+### Reading view
+
 ![QuietReader reading view](docs/screenshots/reading.png)
 
-**Reading view:** Contents navigation, chapter text, and an embedded EPUB illustration.
+**Read locally:** Browse the table of contents, bookmarks, and book details in the sidebar; read chapter text and embedded EPUB illustrations; and turn pages with the controls below.
 
-<details>
-<summary>Bookshelf: recent, all books, and categories</summary>
-
-![Recently read books](docs/screenshots/bookshelf1.png)
-
-![All books](docs/screenshots/bookshelf2.png)
-
-![Book categories](docs/screenshots/bookshelf3.png)
-
-</details>
-
-<details>
-<summary>Focus mode: matching the desktop and adjusting the window</summary>
+### Focus mode
 
 ![Focus mode blending into a sampled desktop color](docs/screenshots/focus1.png)
 
+**Blend with the desktop:** Sample the color you want to blend into with the desktop color picker in Configuration, then enter Focus mode to make the reader blend into the desktop.
+
 ![Hold Alt to show the window outline and move or resize it](docs/screenshots/focus2.png)
 
-</details>
+**Hold Alt to adjust the window:** In Focus mode, hold `Alt` to show the window outline, then drag or resize the window. Release the key to return to reading with only the text visible.
 
-<details>
-<summary>Configuration and live layout preview</summary>
+### Bookshelf
+
+![Recently read books](docs/screenshots/bookshelf1.png)
+
+**Recent books:** Continue a recently opened book and return to your saved reading position.
+
+![All books](docs/screenshots/bookshelf2.png)
+
+**All books:** Browse books in your local library and add new titles from the bookshelf page.
+
+![Book categories](docs/screenshots/bookshelf3.png)
+
+**Categories:** Create categories and organize books in your library so they are easier to find.
+
+### Configuration and layout
 
 ![Configuration page](docs/screenshots/peizhiyemian.png)
 
+**Reader configuration:** Set the interface language, theme, and reading appearance in one place.
+
 ![Live typography preview](docs/screenshots/yuedupeizhi.png)
 
-</details>
+**Live layout preview:** Change font size, line height, letter spacing, paragraph spacing, or page padding and see the reading area update immediately.
 
 ## Features
 
