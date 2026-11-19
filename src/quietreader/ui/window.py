@@ -147,7 +147,7 @@ class MainWindow(QMainWindow):
         self.section_index = 0
         self.loading = False
         self.pending_path = None
-        self._last_browse_dir = ""
+        self._last_browse_dir = store.state.get("last_browse_dir", "")
         self.quitting = False
         self.closed = False
         self.focus_mode = False
@@ -501,11 +501,15 @@ class MainWindow(QMainWindow):
             self._last_browse_dir,
         )
         dialog = BookFileDialog(start_directory, self.settings.language, self)
-        if dialog.exec() == QDialog.DialogCode.Accepted:
-            files = dialog.selected_files()
-            if files:
-                self._last_browse_dir = str(Path(files[0]).parent)
-                self.add_book_paths(files)
+        accepted = dialog.exec() == QDialog.DialogCode.Accepted
+        files = dialog.selected_files() if accepted else []
+        remembered = Path(files[0]).parent if files else dialog.last_directory()
+        if remembered is not None:
+            self._last_browse_dir = str(remembered)
+            self.store.state["last_browse_dir"] = self._last_browse_dir
+            self.schedule_save()
+        if files:
+            self.add_book_paths(files)
 
     def add_book_paths(self, paths, open_after=False):
         if self.loading or self.store.read_only:
@@ -1520,6 +1524,7 @@ class MainWindow(QMainWindow):
         if self.closed:
             return
         self.store.state["settings"] = self.settings.to_dict()
+        self.store.state["last_browse_dir"] = self._last_browse_dir
         if not self.isMinimized() and not self.isMaximized():
             bounds = self.geometry()
             self.store.state["window"] = list(bounds.getRect())

@@ -89,26 +89,31 @@ def _format_selected_names(paths: list[Path]) -> str:
     return " ".join(f'"{path.name}"' for path in paths)
 
 
-def _standard_location(location: QStandardPaths.StandardLocation) -> Path | None:
-    raw = QStandardPaths.writableLocation(location)
-    if not raw:
-        return None
-    path = Path(raw)
+def _accessible_dir(candidate: Path) -> Path | None:
     try:
-        return path.resolve() if path.is_dir() else None
+        resolved = candidate.expanduser().resolve()
+        if not resolved.is_dir():
+            return None
+        with os.scandir(resolved):
+            pass
+        return resolved
     except OSError:
         return None
 
 
+def _standard_location(location: QStandardPaths.StandardLocation) -> Path | None:
+    raw = QStandardPaths.writableLocation(location)
+    if not raw:
+        return None
+    return _accessible_dir(Path(raw))
+
+
 def default_book_directory(books, shelf_manager=None, fallback_last: str = "") -> Path:
-    """Resolve the initial folder without adding new fields to state.json."""
+    """Resolve the initial folder from remembered browse path, book history, or standard folders."""
     if fallback_last:
-        candidate = Path(fallback_last)
-        try:
-            if candidate.is_dir():
-                return candidate.resolve()
-        except OSError:
-            pass
+        accessible = _accessible_dir(Path(fallback_last))
+        if accessible is not None:
+            return accessible
 
     shelf_root = None
     if shelf_manager is not None:
@@ -123,19 +128,16 @@ def default_book_directory(books, shelf_manager=None, fallback_last: str = "") -
         source = record.get("source_path")
         if not isinstance(source, str) or not source:
             continue
-        try:
-            parent = Path(source).expanduser().parent.resolve()
-            if not parent.is_dir():
-                continue
-            if shelf_root is not None:
-                try:
-                    parent.relative_to(shelf_root)
-                    continue
-                except ValueError:
-                    pass
-            return parent
-        except OSError:
+        parent = _accessible_dir(Path(source).expanduser().parent)
+        if parent is None:
             continue
+        if shelf_root is not None:
+            try:
+                parent.relative_to(shelf_root)
+                continue
+            except ValueError:
+                pass
+        return parent
 
     for location in (
         QStandardPaths.StandardLocation.DesktopLocation,
@@ -296,7 +298,24 @@ class _FileTableModel(QAbstractTableModel):
         self._sort_column = column
         self._sort_order = order
         self.layoutAboutToBeChanged.emit()
+        persistent = self.persistentIndexList()
+        tracked = [
+            (str(self.entries[index.row()].path).casefold(), index.column())
+            if index.isValid() and 0 <= index.row() < len(self.entries)
+            else None
+            for index in persistent
+        ]
         self._apply_sort()
+        row_by_path = {str(entry.path).casefold(): row for row, entry in enumerate(self.entries)}
+        updated = []
+        for item in tracked:
+            if item is None:
+                updated.append(QModelIndex())
+                continue
+            key, col = item
+            new_row = row_by_path.get(key)
+            updated.append(self.index(new_row, col) if new_row is not None else QModelIndex())
+        self.changePersistentIndexList(persistent, updated)
         self.layoutChanged.emit()
 
 
@@ -327,10 +346,13 @@ class BookFileDialog(QDialog):
         self.language = language
         self._selected_files: list[str] = []
         self._current_location: Path | str = COMPUTER_TARGET
+        self._last_valid_directory: Path | None = None
         self._history: list[Path | str] = []
         self._history_index = -1
         self._syncing_places = False
         self._syncing_filename = False
+        self._pending_selected_paths: list[str] = []
+        self._pending_current_path: str = ""
 
         self.setWindowTitle(self.t("添加本地书籍"))
         self.resize(860, 560)
@@ -343,12 +365,9 @@ class BookFileDialog(QDialog):
 
         initial: Path | str = COMPUTER_TARGET
         if start_directory:
-            candidate = Path(start_directory).expanduser()
-            try:
-                if candidate.is_dir():
-                    initial = candidate.resolve()
-            except OSError:
-                pass
+            accessible = _accessible_dir(Path(start_directory))
+            if accessible is not None:
+                initial = accessible
         if initial == COMPUTER_TARGET:
             initial = default_book_directory([])
         self.navigate(initial)
@@ -423,6 +442,8 @@ class BookFileDialog(QDialog):
         header.resizeSection(2, 95)
         self.file_view.doubleClicked.connect(self._item_double_clicked)
         self.file_view.selectionModel().selectionChanged.connect(self._selection_changed)
+        self.model.layoutAboutToBeChanged.connect(self._capture_selection_before_layout)
+        self.model.layoutChanged.connect(self._restore_selection_after_layout)
         splitter.addWidget(self.file_view)
         splitter.setSizes([185, 645])
         root.addWidget(splitter, 1)
@@ -548,6 +569,10 @@ class BookFileDialog(QDialog):
     def current_directory(self) -> Path | None:
         return self._current_location if isinstance(self._current_location, Path) else None
 
+    def last_directory(self) -> Path | None:
+        current = self.current_directory()
+        return current if current is not None else self._last_valid_directory
+
     def selected_files(self) -> list[str]:
         return list(self._selected_files)
 
@@ -570,6 +595,8 @@ class BookFileDialog(QDialog):
                 self._history_index = len(self._history) - 1
 
         self._current_location = target
+        if isinstance(target, Path):
+            self._last_valid_directory = target
         self.address_edit.setText(self.t("此电脑") if target == COMPUTER_TARGET else str(target))
         if self.search_edit.text():
             self.search_edit.blockSignals(True)
@@ -712,6 +739,50 @@ class BookFileDialog(QDialog):
         entries = [self.model.entry_at(row) for row in rows]
         return [entry for entry in entries if entry is not None]
 
+    def _capture_selection_before_layout(self):
+        self._pending_selected_paths = [str(entry.path).casefold() for entry in self._selected_entries()]
+        current = self.file_view.currentIndex()
+        entry = self.model.entry_at(current.row()) if current.isValid() else None
+        self._pending_current_path = str(entry.path).casefold() if entry is not None else ""
+
+    def _restore_selection_after_layout(self):
+        selected_keys = self._pending_selected_paths
+        current_key = self._pending_current_path
+        self._pending_selected_paths = []
+        self._pending_current_path = ""
+
+        selection_model = self.file_view.selectionModel()
+        row_by_path = {str(entry.path).casefold(): row for row, entry in enumerate(self.model.entries)}
+        restored_rows = [row_by_path[key] for key in selected_keys if key in row_by_path]
+        current_row = row_by_path.get(current_key)
+
+        self._syncing_filename = True
+        try:
+            selection_model.clearSelection()
+            for row in restored_rows:
+                selection_model.select(
+                    self.model.index(row, 0),
+                    QItemSelectionModel.SelectionFlag.Select | QItemSelectionModel.SelectionFlag.Rows,
+                )
+            target_row = current_row if current_row is not None else (restored_rows[0] if restored_rows else None)
+            if target_row is not None:
+                target_index = self.model.index(target_row, 0)
+                selection_model.setCurrentIndex(target_index, QItemSelectionModel.SelectionFlag.NoUpdate)
+                self.file_view.scrollTo(target_index)
+            else:
+                selection_model.setCurrentIndex(QModelIndex(), QItemSelectionModel.SelectionFlag.NoUpdate)
+        finally:
+            self._syncing_filename = False
+
+        files = [entry.path for entry in self._selected_entries() if not entry.is_dir]
+        self._syncing_filename = True
+        self.filename_edit.setText(_format_selected_names(files))
+        self._syncing_filename = False
+        if files:
+            self.hint_label.setText(self.t("已选择 {count} 个文件", count=len(files)))
+        elif self.model.entries:
+            self.hint_label.setText(self.t("{count} 个项目", count=len(self.model.entries)))
+
     def _selection_changed(self, *_):
         if self._syncing_filename:
             return
@@ -721,6 +792,8 @@ class BookFileDialog(QDialog):
         self._syncing_filename = False
         if files:
             self.hint_label.setText(self.t("已选择 {count} 个文件", count=len(files)))
+        elif self.model.entries:
+            self.hint_label.setText(self.t("{count} 个项目", count=len(self.model.entries)))
 
     def _item_double_clicked(self, index: QModelIndex):
         entry = self.model.entry_at(index.row())

@@ -54,7 +54,16 @@ def _clean_bookmarks(raw):
 
 
 def initial_state():
-    return {"version": VERSION, "settings": Settings().to_dict(), "books": [], "positions": {}, "bookmarks": {}, "last_book": "", "window": [100, 100, 1000, 760]}
+    return {
+        "version": VERSION,
+        "settings": Settings().to_dict(),
+        "books": [],
+        "positions": {},
+        "bookmarks": {},
+        "last_book": "",
+        "last_browse_dir": "",
+        "window": [100, 100, 1000, 760],
+    }
 
 
 class StateStore:
@@ -91,6 +100,9 @@ class StateStore:
                 clean["positions"] = {k: p for k, p in positions.items() if isinstance(k, str) and isinstance(p, dict) and isinstance(p.get("section_id"), str) and type(p.get("offset")) is int}
                 clean["bookmarks"] = _clean_bookmarks(value.get("bookmarks", {}))
                 clean["last_book"] = value.get("last_book", "") if isinstance(value.get("last_book", ""), str) else ""
+                browse_dir = value.get("last_browse_dir", "")
+                if isinstance(browse_dir, str) and "\x00" not in browse_dir and len(browse_dir) <= 4096:
+                    clean["last_browse_dir"] = browse_dir
                 bounds = value.get("window")
                 if isinstance(bounds, list) and len(bounds) == 4 and all(type(v) is int and abs(v) < 100000 for v in bounds):
                     clean["window"] = bounds
