@@ -186,3 +186,97 @@ def migrate_legacy_data(legacy_directory: Path, destination: Path) -> bool:
         else:
             os.replace(staged, target)
     return True
+
+
+def remap_relocated_shelf_paths(state: dict, data_directory: Path) -> bool:
+    """Rebase saved book paths when a copied app-root data folder is relocated."""
+    if not isinstance(state, dict) or not isinstance(state.get("books"), list):
+        return False
+
+    shelf_root = Path(data_directory) / BOOKSHELF_DIR
+    if shelf_root.is_symlink() or not shelf_root.is_dir():
+        return False
+    try:
+        resolved_shelf_root = shelf_root.resolve(strict=True)
+        entries = list(shelf_root.iterdir())
+    except OSError:
+        return False
+
+    categories = {}
+    for entry in entries:
+        if entry.is_symlink() or not entry.is_dir():
+            continue
+        key = entry.name.casefold()
+        if key in categories:
+            categories[key] = None
+        else:
+            categories[key] = entry.name
+
+    id_map = {}
+    changed = False
+    for record in state["books"]:
+        if not isinstance(record, dict) or not isinstance(record.get("path"), str):
+            continue
+        try:
+            old_path = Path(record["path"]).expanduser()
+            if not old_path.is_absolute():
+                continue
+            parts = old_path.parts
+            bookshelf_index = next(
+                (
+                    index for index, part in enumerate(parts)
+                    if part.casefold() in {BOOKSHELF_DIR.casefold(), LEGACY_BOOKSHELF_DIR.casefold()}
+                    and len(parts) - index == 3
+                ),
+                None,
+            )
+            if bookshelf_index is None:
+                continue
+
+            category_key = parts[bookshelf_index + 1].casefold()
+            if category_key == LEGACY_UNCLASSIFIED_DIR.casefold():
+                category_key = UNCLASSIFIED.casefold()
+            category_name = categories.get(category_key)
+            if not category_name:
+                continue
+
+            category_path = shelf_root / category_name
+            matches = [
+                entry for entry in category_path.iterdir()
+                if entry.name.casefold() == parts[bookshelf_index + 2].casefold()
+                and not entry.is_symlink()
+                and entry.is_file()
+                and entry.suffix.lower() in SUPPORTED_SUFFIXES
+            ]
+            if len(matches) != 1:
+                continue
+            new_path = matches[0].resolve(strict=True)
+            new_path.relative_to(resolved_shelf_root)
+            old_resolved = old_path.resolve(strict=False)
+        except (OSError, RuntimeError, ValueError, IndexError):
+            continue
+
+        new_id = book_id_for_path(new_path)
+        old_id = record.get("id")
+        if old_resolved == new_path and old_id == new_id:
+            continue
+        record["path"] = str(new_path)
+        record["id"] = new_id
+        if isinstance(old_id, str) and old_id:
+            id_map[old_id] = new_id
+        changed = True
+
+    for key in ("positions", "bookmarks"):
+        records = state.get(key)
+        if not isinstance(records, dict):
+            continue
+        for old_id, new_id in id_map.items():
+            if old_id == new_id or old_id not in records:
+                continue
+            value = records.pop(old_id)
+            records.setdefault(new_id, value)
+    last_book = state.get("last_book")
+    if isinstance(last_book, str) and last_book in id_map:
+        state["last_book"] = id_map[last_book]
+
+    return changed
