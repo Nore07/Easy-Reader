@@ -9,7 +9,7 @@ from PySide6.QtGui import QAction, QGuiApplication, QIcon, QKeySequence, QShortc
 from PySide6.QtWidgets import (
     QApplication, QComboBox, QDialog, QFileDialog, QHBoxLayout, QLabel, QInputDialog, QMessageBox,
     QListWidget, QListWidgetItem, QMainWindow, QMenu, QPushButton, QSizePolicy, QStackedWidget,
-    QSizeGrip, QSlider, QSystemTrayIcon, QTabWidget, QVBoxLayout, QWidget,
+    QSizeGrip, QProgressBar, QSlider, QSystemTrayIcon, QTabWidget, QVBoxLayout, QWidget,
 )
 
 from quietreader.content.local import ENCODINGS, ImportError as BookImportError, load_book
@@ -338,6 +338,16 @@ class MainWindow(QMainWindow):
         self.reading_tabs.setTabVisible(3, False)
         self.reading_tabs.setTabVisible(4, False)
         side.addWidget(self.reading_tabs)
+        self.book_progress_label = self._label("全书进度：--", "status")
+        self.book_progress_label.setAccessibleName("全书阅读进度")
+        side.addWidget(self.book_progress_label)
+        self.book_progress_bar = QProgressBar()
+        self.book_progress_bar.setObjectName("bookProgress")
+        self.book_progress_bar.setRange(0, 1000)
+        self.book_progress_bar.setTextVisible(False)
+        self.book_progress_bar.setFixedHeight(5)
+        self.book_progress_bar.setAccessibleName("全书阅读进度")
+        side.addWidget(self.book_progress_bar)
         self.sidebar_status = self._label("本地阅读 · 无需联网", "status")
         side.addWidget(self.sidebar_status)
         self._update_sidebar_toggle()
@@ -364,7 +374,7 @@ class MainWindow(QMainWindow):
         reading.addWidget(self.reader, 1)
         self.progress = QSlider(Qt.Orientation.Horizontal)
         self.progress.setRange(0, 1000)
-        self.progress.setAccessibleName("全书阅读进度")
+        self.progress.setAccessibleName("本章阅读进度")
         self.progress.sliderReleased.connect(self._seek)
         self.progress.setEnabled(False)
         reading.addWidget(self.progress)
@@ -982,27 +992,55 @@ class MainWindow(QMainWindow):
             self.tray_focus_action.setEnabled(ready)
         if ready:
             total = sum(len(s.text) for s in self.book.sections)
-            current = sum(len(s.text) for s in self.book.sections[:self.section_index]) + self.reader.offset
-            fraction = current / max(1, total)
+            book_current = sum(len(s.text) for s in self.book.sections[:self.section_index]) + self.reader.offset
+            book_fraction = book_current / max(1, total)
             if self.section_index == len(self.book.sections) - 1 and self.reader.page == self.reader.page_count - 1:
-                fraction = 1
+                book_fraction = 1
+
+            identity = self._chapter_identity(self.book.sections[self.section_index])
+            chapter_start = self.section_index
+            while chapter_start > 0 and self._chapter_identity(self.book.sections[chapter_start - 1]) == identity:
+                chapter_start -= 1
+            chapter_end = self.section_index + 1
+            while chapter_end < len(self.book.sections) and self._chapter_identity(self.book.sections[chapter_end]) == identity:
+                chapter_end += 1
+            chapter_sections = self.book.sections[chapter_start:chapter_end]
+            chapter_total = sum(len(section.text) for section in chapter_sections)
+            chapter_current = sum(len(section.text) for section in self.book.sections[chapter_start:self.section_index]) + self.reader.offset
+            chapter_fraction = chapter_current / max(1, chapter_total)
+            if self.section_index == chapter_end - 1 and self.reader.page == self.reader.page_count - 1:
+                chapter_fraction = 1
+
             self.page_label.setProperty("translation_source", None)
-            full_label = tr("{page} / {pages} 页 · 全书 {progress}", self.settings.language, page=self.reader.page + 1, pages=self.reader.page_count, progress=f"{fraction:.0%}")
+            full_label = tr("{page} / {pages} 页 · 本章 {progress}", self.settings.language, page=self.reader.page + 1, pages=self.reader.page_count, progress=f"{chapter_fraction:.0%}")
             compact_label = f"{self.reader.page + 1}/{self.reader.page_count}"
             self.page_label.setProperty("full_text", full_label)
             self.page_label.setProperty("compact_text", compact_label)
             self.page_label.setToolTip(full_label)
             if not self.progress.isSliderDown():
-                self.progress.setValue(round(fraction * 1000))
+                self.progress.setValue(round(chapter_fraction * 1000))
+            self.book_progress_label.setText(self.t("全书进度：{progress}", progress=f"{book_fraction:.0%}"))
+            self.book_progress_bar.setValue(round(book_fraction * 1000))
+        else:
+            self.book_progress_label.setText(self.t("全书进度：--"))
+            self.book_progress_bar.setValue(0)
         self._sync_reader_navigation_labels()
 
     def _seek(self):
         if not self.book:
             return
-        total = sum(len(s.text) for s in self.book.sections)
+        identity = self._chapter_identity(self.book.sections[self.section_index])
+        chapter_start = self.section_index
+        while chapter_start > 0 and self._chapter_identity(self.book.sections[chapter_start - 1]) == identity:
+            chapter_start -= 1
+        chapter_end = self.section_index + 1
+        while chapter_end < len(self.book.sections) and self._chapter_identity(self.book.sections[chapter_end]) == identity:
+            chapter_end += 1
+        sections = self.book.sections[chapter_start:chapter_end]
+        total = sum(len(section.text) for section in sections)
         target = round(total * self.progress.value() / 1000)
-        for index, section in enumerate(self.book.sections):
-            if target < len(section.text) or index == len(self.book.sections) - 1:
+        for index, section in enumerate(sections, start=chapter_start):
+            if target < len(section.text) or index == chapter_end - 1:
                 self.open_section(index, min(target, len(section.text)))
                 break
             target -= len(section.text)
@@ -1267,10 +1305,7 @@ class MainWindow(QMainWindow):
             self.reading_tabs.setTabText(index, self.t(source))
         self.shelf.retranslate(self.settings.language)
         self.book_info.set_book(self.book, self.settings.language)
-        if self.book:
-            self._update_progress()
-        else:
-            self._sync_reader_navigation_labels()
+        self._update_progress()
         self.encoding.setItemText(0, self.t("自动识别"))
         self.focus_button.setText(self.t("退出专注" if self.focus_mode else "专注"))
         self._update_sidebar_toggle()

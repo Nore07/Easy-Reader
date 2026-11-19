@@ -76,6 +76,8 @@ def stylesheet(palette, alpha=255, borderless=False, resize_outline=False):
     QTabBar::tab {{ color: {c['muted']}; padding: 10px 16px; margin-right: 5px; border-bottom: 2px solid transparent; }}
     QTabBar::tab:hover {{ color: {c['ink']}; background: {c['button']}; border-top-left-radius: 5px; border-top-right-radius: 5px; }}
     QTabBar::tab:selected {{ color: {c['accent']}; border-bottom: 2px solid {c['accent']}; font-weight: 600; }}
+    QProgressBar#bookProgress {{ background: {c['button']}; border: none; border-radius: 2px; }}
+    QProgressBar#bookProgress::chunk {{ background: {c['accent']}; border-radius: 2px; }}
     QDialog {{ background: {c['paper']}; }}
     QScrollArea#preferencesScroll {{ background: {c['paper']}; border: 1px solid {c['line']}; border-radius: 5px; }}
     QWidget#preferencesContent, QWidget#preferencesViewport {{ background: {c['paper']}; }}
