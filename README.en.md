@@ -104,7 +104,7 @@ The source version and release use their own root-level `data` folders and do no
 
 ## Contributing
 
-Report bugs and suggest improvements through [GitHub Issues](https://github.com/Nore07/Quiet-Reader/issues). Pull Requests are welcome.
+Report bugs and suggest improvements through [GitHub Issues](https://github.com/Nore07/Quiet-Reader/issues). See the [contribution guide](CONTRIBUTING.md) for branch, commit, and pull request workflow.
 
 ## License
 
