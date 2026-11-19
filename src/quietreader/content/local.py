@@ -440,13 +440,7 @@ def _validate_image_payload(payload):
 
 _XML_PREDEFINED_ENTITIES = frozenset({"amp", "lt", "gt", "quot", "apos"})
 _XML_DECLARATION_ENCODING = re.compile(rb'^\s*<\?xml\b[^?>]{0,256}\bencoding\s*=\s*["\']([A-Za-z0-9._-]+)["\']')
-_XHTML_ENTITY_TOKEN = re.compile(
-    r"<!--[\s\S]*?-->"
-    r"|<!\[CDATA\[[\s\S]*?\]\]>"
-    r"|<\?[\s\S]*?\?>"
-    r"|<!DOCTYPE\b[^>\[]*(?:\[[\s\S]*?\][^>]*)?>"
-    r"|&([A-Za-z][A-Za-z0-9]{0,31});"
-)
+_XHTML_SCAN_START = re.compile(r"<!--|<!\[CDATA\[|<\?|<!DOCTYPE\b|&([A-Za-z][A-Za-z0-9]{0,31});")
 
 
 def _decode_xml_bytes(payload: bytes) -> str:
@@ -461,15 +455,77 @@ def _decode_xml_bytes(payload: bytes) -> str:
     return payload.decode(encoding).lstrip("\ufeff")
 
 
-def _replace_html_named_entities(text: str) -> str:
-    def replace(match: re.Match[str]) -> str:
-        name = match.group(1)
-        if not name or name in _XML_PREDEFINED_ENTITIES:
-            return match.group(0)
-        codepoint = _HTML_NAMED_ENTITIES.get(name)
-        return f"&#{codepoint};" if codepoint is not None else match.group(0)
+def _find_doctype_end(text: str, start: int) -> int:
+    length = len(text)
+    index = start
+    quote = ""
+    in_subset = False
+    while index < length:
+        char = text[index]
+        if quote:
+            if char == quote:
+                quote = ""
+        elif char in ('"', "'"):
+            quote = char
+        elif in_subset:
+            if char == "]":
+                in_subset = False
+        elif char == "[":
+            in_subset = True
+        elif char == ">":
+            return index + 1
+        index += 1
+    return -1
 
-    return _XHTML_ENTITY_TOKEN.sub(replace, text)
+
+def _replace_html_named_entities(text: str) -> str:
+    """Single-pass O(n) replacement of standard HTML named entities outside XML constructs."""
+    parts: list[str] = []
+    pos = 0
+    length = len(text)
+    while pos < length:
+        match = _XHTML_SCAN_START.search(text, pos)
+        if match is None:
+            parts.append(text[pos:])
+            break
+        start, end = match.span()
+        parts.append(text[pos:start])
+        name = match.group(1)
+        if name is not None:
+            if name in _XML_PREDEFINED_ENTITIES:
+                parts.append(match.group(0))
+            else:
+                codepoint = _HTML_NAMED_ENTITIES.get(name)
+                parts.append(f"&#{codepoint};" if codepoint is not None else match.group(0))
+            pos = end
+            continue
+        token = match.group(0)
+        if token == "<!--":
+            close = text.find("-->", end)
+            if close < 0:
+                parts.append(text[start:])
+                break
+            close += 3
+        elif token == "<![CDATA[":
+            close = text.find("]]>", end)
+            if close < 0:
+                parts.append(text[start:])
+                break
+            close += 3
+        elif token == "<?":
+            close = text.find("?>", end)
+            if close < 0:
+                parts.append(text[start:])
+                break
+            close += 2
+        else:
+            close = _find_doctype_end(text, end)
+            if close < 0:
+                parts.append(text[start:])
+                break
+        parts.append(text[start:close])
+        pos = close
+    return "".join(parts)
 
 
 def _parse_epub_xml(payload: bytes):
