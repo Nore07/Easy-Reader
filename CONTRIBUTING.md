@@ -7,7 +7,7 @@
 1. 从最新的 `main` 创建独立分支：`feat/<功能>`、`fix/<问题>` 或 `docs/<主题>`。
 2. 每个分支聚焦一个问题，避免把无关改动放在同一个 Pull Request 中。
 3. 提交前检查改动和运行结果。界面改动请附截图；涉及数据格式或书架路径的改动请说明迁移方式。
-4. 推送功能分支，并向 `main` 发起 Pull Request。`main` 受保护，不能直接推送；Pull Request 需要至少一位协作者审批，新增提交会使旧审批失效。
+4. 推送功能分支，并向 `main` 发起 Pull Request。`main` 受保护，不能直接推送。协作者和外部贡献者的 Pull Request 需要至少一位其他有写权限的协作者审批，新增提交会使旧审批失效。仓库所有者可在 Pull Request 中绕过评审要求，但仍必须通过 Pull Request 合并。
 5. 处理审查意见并解决所有对话后，由维护者合并。未经维护者确认，不要创建正式版本或修改已发布的 Release。
 
 ## 分支与提交
@@ -34,6 +34,6 @@ py -3.12 -m venv .venv
 
 ## Contribution workflow (English)
 
-For substantial features or data-format changes, open an Issue first. Create a focused branch from the latest `main` (`feat/<topic>`, `fix/<topic>`, or `docs/<topic>`), describe the change and verification in a Pull Request, and include screenshots for UI changes. The protected `main` branch accepts changes through reviewed Pull Requests only; at least one collaborator approval is required, and new commits invalidate earlier approvals. Resolve review conversations before merging. Maintainers handle releases.
+For substantial features or data-format changes, open an Issue first. Create a focused branch from the latest `main` (`feat/<topic>`, `fix/<topic>`, or `docs/<topic>`), describe the change and verification in a Pull Request, and include screenshots for UI changes. Direct pushes to the protected `main` branch are blocked. Pull Requests from collaborators and outside contributors require one approval from another collaborator with write access; new commits invalidate earlier approvals. The repository owner may bypass the review requirement only when merging through a Pull Request. Resolve review conversations before merging. Maintainers handle releases.
 
 Use concise commit subjects such as `fix(storage): repair relocated bookshelf paths`, with a body explaining why and how. Do not force-push or rewrite history on shared branches. Use the project virtual environment described above and report the checks you actually ran. Never commit `.venv`, `data`, personal books or settings, build output, secrets, or local logs.
