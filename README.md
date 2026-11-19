@@ -78,7 +78,7 @@ QuietReader 是一款面向 Windows 的离线本地阅读器，使用 Python 与
 
 ## 获取与运行
 
-**下载软件包：** [QuietReader 0.1.5 Windows x64 便携版](https://github.com/Nore07/Quiet-Reader/releases/download/v0.1.5/QuietReader-0.1.5-Windows-x64.zip) 可在 [GitHub Releases](https://github.com/Nore07/Quiet-Reader/releases) 下载。压缩包不包含个人配置或书籍；解压后运行 `QuietReader.exe`，程序会在其旁边创建 `data\`。运行时请保留解压目录中的全部文件。
+**下载软件包：** [QuietReader 0.1.6 Windows x64 便携版](https://github.com/Nore07/Quiet-Reader/releases/download/v0.1.6/QuietReader-0.1.6-Windows-x64.zip)（[SHA-256 校验文件](https://github.com/Nore07/Quiet-Reader/releases/download/v0.1.6/QuietReader-0.1.6-Windows-x64.zip.sha256)）可在 [GitHub Releases](https://github.com/Nore07/Quiet-Reader/releases) 下载。压缩包不包含个人配置或书籍；解压后运行 `QuietReader.exe`，程序会在其旁边创建 `data\`。运行时请保留解压目录中的全部文件。
 
 **从源码运行：** 下载或克隆仓库后，需要 Python 3.12 或更新版本。在仓库根目录运行 PowerShell 命令：
 

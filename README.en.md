@@ -78,7 +78,7 @@ Global shortcuts for window visibility and emergency exit can be enabled in Conf
 
 ## Download and run
 
-**Download the app:** [QuietReader 0.1.5 for Windows x64](https://github.com/Nore07/Quiet-Reader/releases/download/v0.1.5/QuietReader-0.1.5-Windows-x64.zip) is available on [GitHub Releases](https://github.com/Nore07/Quiet-Reader/releases). The archive does not include personal settings or books. After extraction, run `QuietReader.exe`; it creates a `data\` folder beside the executable. Keep all files in the extracted directory while running the app.
+**Download the app:** [QuietReader 0.1.6 for Windows x64](https://github.com/Nore07/Quiet-Reader/releases/download/v0.1.6/QuietReader-0.1.6-Windows-x64.zip) ([SHA-256 checksum](https://github.com/Nore07/Quiet-Reader/releases/download/v0.1.6/QuietReader-0.1.6-Windows-x64.zip.sha256)) is available on [GitHub Releases](https://github.com/Nore07/Quiet-Reader/releases). The archive does not include personal settings or books. After extraction, run `QuietReader.exe`; it creates a `data\` folder beside the executable. Keep all files in the extracted directory while running the app.
 
 **Run from source:** Download or clone this repository. Python 3.12 or newer is required. From the repository root in PowerShell:
 

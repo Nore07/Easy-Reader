@@ -1,5 +1,61 @@
 # QuietReader 更新日志 / Changelog
 
+## [0.1.6] — 2026-11-19
+
+### 简体中文
+
+本版本提供 Windows x64 便携软件包，包含近期阅读进度、主题配色和界面改进，并提升了含有大量插图引用的 EPUB 兼容性。
+
+#### 下载与运行
+
+- 下载：[QuietReader-0.1.6-Windows-x64.zip](https://github.com/Nore07/Quiet-Reader/releases/download/v0.1.6/QuietReader-0.1.6-Windows-x64.zip)。
+- SHA-256：`46fc4378c3d716bb05e5c4d7ff11db90f4df845e7a62d7c048b7dc3db7637957`；校验文件：[QuietReader-0.1.6-Windows-x64.zip.sha256](https://github.com/Nore07/Quiet-Reader/releases/download/v0.1.6/QuietReader-0.1.6-Windows-x64.zip.sha256)。
+- 解压后运行 `QuietReader.exe`，并保留程序目录中的所有文件。
+- 软件包包含应用程序、运行时依赖、Apache-2.0 许可文本和第三方许可信息；不包含仓库源码、开发脚本、测试内容、个人设置或书籍。
+- 当前 Windows 软件包未进行代码签名。
+
+#### 本次改进
+
+- 阅读页进度条显示当前章节进度，全书进度显示在左侧栏；书架列表显示当前章节和全书百分比。
+- 重复启动程序时会唤醒已有窗口，避免打开多个实例。
+- 修复夜读主题下托盘菜单和书籍资料页文字对比度不足的问题。
+- 暖纸主题改用协调的暖米色、砂岩色和咖啡棕配色；更新书架分类下拉选择器样式。
+- EPUB 插图引用支持上限提高至 4096，并避免重复读取时重复校验同一图片资源。
+
+#### 配置与书籍位置
+
+- 配置、阅读进度和书签：`data\state.json`。
+- 导入的书籍副本：`data\bookshelf\uncategorized\` 或 `data\bookshelf\<分类名>\`。
+- `data` 位于阅读器根目录；Release 版中，它与 `QuietReader.exe` 同级。磁盘目录使用英文名称 `bookshelf` 和 `uncategorized`，界面名称由语言设置翻译。
+- 更新软件时保留原来的 `data` 文件夹；若解压到新目录，请把旧 `data` 复制到新 `QuietReader.exe` 旁边。
+
+### English
+
+This release provides a portable Windows x64 package with recent reading-progress, theme, and interface improvements, plus better compatibility with EPUBs containing many image references.
+
+#### Download and run
+
+- Download: [QuietReader-0.1.6-Windows-x64.zip](https://github.com/Nore07/Quiet-Reader/releases/download/v0.1.6/QuietReader-0.1.6-Windows-x64.zip).
+- SHA-256: `46fc4378c3d716bb05e5c4d7ff11db90f4df845e7a62d7c048b7dc3db7637957`; checksum file: [QuietReader-0.1.6-Windows-x64.zip.sha256](https://github.com/Nore07/Quiet-Reader/releases/download/v0.1.6/QuietReader-0.1.6-Windows-x64.zip.sha256).
+- Extract the archive, run `QuietReader.exe`, and keep every file in the application directory.
+- The package contains the application, runtime dependencies, the Apache-2.0 license, and third-party notices. It excludes repository source, developer scripts, tests, personal settings, and books.
+- This Windows package is not code-signed.
+
+#### Changes
+
+- The reader progress bar now tracks the current chapter; whole-book progress appears in the sidebar, and shelf entries show the current chapter and whole-book percentage.
+- Repeated launches now bring the existing window forward instead of opening another instance.
+- Fixed low text contrast in the tray menu and book details under the Night theme.
+- Updated the Sepia theme with coordinated warm-paper, sandstone, and coffee-brown colors; refreshed the bookshelf category selectors.
+- Raised the EPUB image-reference limit to 4,096 while avoiding repeated validation of the same image resource.
+
+#### Settings and books
+
+- Settings, reading positions, and bookmarks: `data\state.json`.
+- Imported book copies: `data\bookshelf\uncategorized\` or `data\bookshelf\<category>\`.
+- `data` is under the reader root; in the release package it sits beside `QuietReader.exe`. On-disk folder names are `bookshelf` and `uncategorized`; the interface translates their labels according to the selected language.
+- Keep the existing `data` folder when updating. If you extract into a new location, copy the old `data` folder beside the new `QuietReader.exe`.
+
 ## [0.1.5] — 2026-11-18
 
 ### 简体中文
