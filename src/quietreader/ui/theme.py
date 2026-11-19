@@ -17,7 +17,9 @@ def colors(theme, background_color=""):
     dark = theme == "dark" or (theme == "system" and QGuiApplication.styleHints().colorScheme() == Qt.ColorScheme.Dark)
     if dark:
         return {"paper": "#202b28", "ink": "#e7e6dc", "muted": "#acb9ae", "side": "#18231f", "line": "#3f5047", "accent": "#b5cdb6", "button": "#33483e", "selected": "#405b4b"}
-    return {"paper": "#f5f3eb" if theme != "sepia" else "#eee2c9", "ink": "#283c33", "muted": "#68796c", "side": "#e8ebdf", "line": "#d8ded0", "accent": "#315743", "button": "#dfe6d7", "selected": "#cfdeca"}
+    if theme == "sepia":
+        return {"paper": "#eee2c9", "ink": "#40352b", "muted": "#83745f", "side": "#e7d8ba", "line": "#d4c19a", "accent": "#805b36", "button": "#e7d6b4", "selected": "#d8c29a"}
+    return {"paper": "#f5f3eb", "ink": "#283c33", "muted": "#68796c", "side": "#e8ebdf", "line": "#d8ded0", "accent": "#315743", "button": "#dfe6d7", "selected": "#cfdeca"}
 
 
 def stylesheet(palette, alpha=255, borderless=False, resize_outline=False):
