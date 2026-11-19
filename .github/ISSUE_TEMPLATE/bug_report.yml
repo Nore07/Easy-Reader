@@ -1,0 +1,77 @@
+name: "Bug report / 错误报告"
+description: "Report a reproducible problem in QuietReader / 报告 QuietReader 中可复现的问题"
+title: "[Bug] "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Before submitting, search existing Issues. For security vulnerabilities, follow SECURITY.md instead of opening a public Issue. Remove personal paths, book titles, and private data from screenshots or logs.
+
+        提交前请先搜索已有 Issues。安全漏洞请按 SECURITY.md 中的方式私下报告，不要公开提交。截图或日志中请移除个人路径、书名及其他私人信息。
+  - type: textarea
+    id: summary
+    attributes:
+      label: "Problem summary / 问题简述"
+      description: "What went wrong? / 遇到了什么问题？"
+      placeholder: "A concise description / 简要描述"
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: "QuietReader version / QuietReader 版本"
+      description: "Use the version tag shown in GitHub Releases; if running from source, include the commit ID if known. / 请填写 GitHub Releases 中的版本标签；从源码运行时，如知道可附提交号。"
+      placeholder: "Release tag or source commit / 发布版本标签或源码提交号"
+    validations:
+      required: true
+  - type: input
+    id: windows_version
+    attributes:
+      label: "Windows version / Windows 版本"
+      placeholder: "For example, Windows 11 24H2 / 例如 Windows 11 24H2"
+    validations:
+      required: true
+  - type: dropdown
+    id: install_method
+    attributes:
+      label: "How are you running QuietReader? / 你如何运行 QuietReader？"
+      options:
+        - "Downloaded Windows package / 下载的 Windows 软件包"
+        - "From source / 从源码运行"
+        - "Other / 其他"
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction_steps
+    attributes:
+      label: "Steps to reproduce / 复现步骤"
+      description: "List the steps that reliably reproduce the problem. / 列出稳定复现问题的操作步骤。"
+      placeholder: |
+        1. ...
+        2. ...
+        3. ...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: "Expected behavior / 预期结果"
+      placeholder: "What did you expect to happen? / 你预期发生什么？"
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: "Actual behavior / 实际结果"
+      placeholder: "What happened instead? Include any error message. / 实际发生了什么？如有错误提示请一并说明。"
+    validations:
+      required: true
+  - type: textarea
+    id: extra_context
+    attributes:
+      label: "Additional context / 补充信息"
+      description: "Add screenshots or logs if useful, after removing private information. / 如有帮助，可附截图或日志；请先移除私人信息。"
+    validations:
+      required: false
