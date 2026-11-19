@@ -102,6 +102,8 @@ Preferences and books are stored in a `data` folder under the reader root. For s
 
 The source version and release use their own root-level `data` folders and do not synchronize by default. To share data between them, pass the same `--data-dir <directory>` to both. On first use of the default path, if the target `data` folder is empty, data from the previous `%LOCALAPPDATA%\QuietReader\QuietReader\` location is copied there; the old directory is retained. Keep the release's `data` folder when updating. If you extract a release to a new directory, copy the old `data` folder alongside the new `QuietReader.exe`.
 
+When a copied `data` folder is used from a new application directory, startup checks whether saved bookshelf records still point to the previous location. If the matching book files exist under the new `data\bookshelf`, QuietReader updates their paths and IDs while retaining reading progress, bookmarks, and recent-reading state. Back up `data` before relocating it. Records are left unchanged when a matching file cannot be found; the old data is not deleted.
+
 ## Contributing
 
 Report bugs and suggest improvements through [GitHub Issues](https://github.com/Nore07/Quiet-Reader/issues). Pull Requests are welcome.

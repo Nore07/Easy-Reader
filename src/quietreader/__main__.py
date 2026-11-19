@@ -7,7 +7,12 @@ from PySide6.QtCore import QLockFile, QStandardPaths, QTimer
 from PySide6.QtNetwork import QLocalServer, QLocalSocket
 from PySide6.QtWidgets import QApplication, QMessageBox
 
-from quietreader.persistence.data_paths import application_data_directory, legacy_migration_needed, migrate_legacy_data
+from quietreader.persistence.data_paths import (
+    application_data_directory,
+    legacy_migration_needed,
+    migrate_legacy_data,
+    remap_relocated_shelf_paths,
+)
 from quietreader.persistence.store import StateStore
 from quietreader.ui.window import MainWindow
 from quietreader.i18n import tr
@@ -103,7 +108,13 @@ def main():
 
     activation_server.newConnection.connect(accept_activation)
     app._quietreader_release_lock = lock.unlock
-    window = MainWindow(StateStore(directory))
+    store = StateStore(directory)
+    if not store.read_only and remap_relocated_shelf_paths(store.state, directory):
+        try:
+            store.save()
+        except OSError:
+            store.warning = "书架路径已在本次运行中修复，但未能保存；请检查数据目录权限并重启。"
+    window = MainWindow(store)
     window_ref["window"] = window
     app.aboutToQuit.connect(window.shutdown)
     app.commitDataRequest.connect(lambda *_: window.save_state())

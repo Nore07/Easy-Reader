@@ -102,6 +102,8 @@ py -3.12 -m venv .venv
 
 源码版和 Releases 版分别使用各自根目录的 `data`，默认不会互相同步。若要共享数据，可给两种启动方式传入相同的 `--data-dir <目录>`。首次使用默认目录且目标 `data` 为空时，旧版 `%LOCALAPPDATA%\QuietReader\QuietReader\` 中的数据会复制过去，原目录会保留。更新 Releases 版时请保留原目录中的 `data`；若解压到新目录，请把旧目录的 `data` 一并复制过去。
 
+将 `data` 复制到新程序目录后，首次启动会检查书架记录是否还指向旧目录。若新 `data\bookshelf` 中有对应的书籍文件，程序会更新书籍路径和书籍 ID，并同步保留阅读进度、书签与最近阅读记录。迁移前建议备份 `data`；未找到对应书籍时，原记录会保留，不会删除旧数据。
+
 ## 参与项目
 
 欢迎通过 [GitHub Issues](https://github.com/Nore07/Quiet-Reader/issues) 报告问题或提出改进建议，也欢迎提交 Pull Request。
