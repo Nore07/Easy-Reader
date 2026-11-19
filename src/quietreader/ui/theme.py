@@ -92,4 +92,13 @@ def stylesheet(palette, alpha=255, borderless=False, resize_outline=False):
     QComboBox:focus, QSpinBox:focus, QDoubleSpinBox:focus, QFontComboBox:focus, QLineEdit:focus {{ border-color: {c['accent']}; }}
     QCheckBox {{ padding: 5px 0; }}
     QToolTip {{ background: {c['paper']}; color: {c['ink']}; border: 1px solid {c['line']}; }}
+    QMenu {{ background: {c['paper']}; color: {c['ink']}; border: 1px solid {c['line']}; padding: 5px; }}
+    QMenu::item {{ color: {c['ink']}; background: transparent; padding: 7px 24px 7px 10px; border-radius: 4px; }}
+    QMenu::item:selected {{ color: {c['ink']}; background: {c['selected']}; }}
+    QMenu::item:disabled {{ color: {c['muted']}; }}
+    QMenu::separator {{ height: 1px; background: {c['line']}; margin: 4px 8px; }}
+    QScrollArea#bookInfoScroll {{ background: {c['paper']}; border: none; }}
+    QWidget#bookInfoViewport, QWidget#bookInfoContent {{ background: {c['paper']}; color: {c['ink']}; }}
+    QLabel#bookInfoDetails {{ color: {c['ink']}; background: transparent; }}
+    QLabel#bookCoverLabel {{ color: {c['muted']}; background: transparent; }}
     """

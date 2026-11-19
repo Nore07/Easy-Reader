@@ -8,27 +8,33 @@ from quietreader.i18n import tr
 class BookInfoPanel(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
+        self.setObjectName("bookInfoPanel")
         self.book = None
         self.language = "system"
         self.cover_image = None
         self.cover = QLabel()
+        self.cover.setObjectName("bookCoverLabel")
         self.cover.setAccessibleName("书籍封面")
         self.cover.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.cover.setMinimumHeight(140)
         self.cover.setMaximumHeight(280)
         self.details = QLabel()
+        self.details.setObjectName("bookInfoDetails")
         self.details.setTextFormat(Qt.TextFormat.PlainText)
         self.details.setWordWrap(True)
         self.details.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
         content = QWidget()
+        content.setObjectName("bookInfoContent")
         layout = QVBoxLayout(content)
         layout.setContentsMargins(8, 8, 8, 8)
         layout.addWidget(self.cover)
         layout.addWidget(self.details)
         layout.addStretch()
         scroll = QScrollArea()
+        scroll.setObjectName("bookInfoScroll")
         scroll.setWidgetResizable(True)
         scroll.setFrameShape(QScrollArea.Shape.NoFrame)
+        scroll.viewport().setObjectName("bookInfoViewport")
         scroll.setWidget(content)
         outer = QVBoxLayout(self)
         outer.setContentsMargins(0, 0, 0, 0)
