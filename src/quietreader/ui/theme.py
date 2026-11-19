@@ -92,6 +92,13 @@ def stylesheet(palette, alpha=255, borderless=False, resize_outline=False):
     QComboBox, QSpinBox, QDoubleSpinBox, QFontComboBox, QLineEdit {{ background: {c['paper']}; border: 1px solid {c['line']}; border-radius: 6px; padding: 6px 9px; min-height: 24px; }}
     QComboBox:hover, QSpinBox:hover, QDoubleSpinBox:hover, QFontComboBox:hover, QLineEdit:hover {{ border-color: {c['muted']}; }}
     QComboBox:focus, QSpinBox:focus, QDoubleSpinBox:focus, QFontComboBox:focus, QLineEdit:focus {{ border-color: {c['accent']}; }}
+    QComboBox#shelfCategoryCombo {{ background: {c['side']}; border: 1px solid {c['line']}; border-radius: 9px; padding: 7px 34px 7px 12px; min-height: 24px; }}
+    QComboBox#shelfCategoryCombo:hover {{ background: {c['button']}; border-color: {c['muted']}; }}
+    QComboBox#shelfCategoryCombo:focus {{ border-color: {c['accent']}; }}
+    QComboBox#shelfCategoryCombo::drop-down {{ subcontrol-origin: padding; subcontrol-position: top right; width: 30px; border: none; border-top-right-radius: 8px; border-bottom-right-radius: 8px; }}
+    QComboBox#shelfCategoryCombo::drop-down:hover {{ background: {c['selected']}; }}
+    QComboBox#shelfCategoryCombo::down-arrow {{ image: none; width: 0; height: 0; border-left: 4px solid transparent; border-right: 4px solid transparent; border-top: 5px solid {c['muted']}; margin-top: 2px; }}
+    QComboBox#shelfCategoryCombo QAbstractItemView {{ background: {c['paper']}; color: {c['ink']}; selection-background-color: {c['selected']}; selection-color: {c['ink']}; border: 1px solid {c['line']}; border-radius: 8px; padding: 4px; outline: 0; }}
     QCheckBox {{ padding: 5px 0; }}
     QToolTip {{ background: {c['paper']}; color: {c['ink']}; border: 1px solid {c['line']}; }}
     QMenu {{ background: {c['paper']}; color: {c['ink']}; border: 1px solid {c['line']}; padding: 5px; }}
