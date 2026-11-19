@@ -110,4 +110,28 @@ def stylesheet(palette, alpha=255, borderless=False, resize_outline=False):
     QWidget#bookInfoViewport, QWidget#bookInfoContent {{ background: {c['paper']}; color: {c['ink']}; }}
     QLabel#bookInfoDetails {{ color: {c['ink']}; background: transparent; }}
     QLabel#bookCoverLabel {{ color: {c['muted']}; background: transparent; }}
+    QPushButton#fileNavButton {{ padding: 0; min-height: 0; font-size: 14px; }}
+    QSplitter#fileDialogSplitter::handle {{ background: {c['line']}; width: 1px; margin: 4px 4px; }}
+    QListWidget#fileDialogPlaces {{ background: {c['side']}; border: 1px solid {c['line']}; border-radius: 8px; padding: 5px; outline: 0; }}
+    QListWidget#fileDialogPlaces::item {{ padding: 7px 10px; border-radius: 6px; }}
+    QListWidget#fileDialogPlaces::item:selected {{ background: {c['selected']}; color: {c['ink']}; }}
+    QListWidget#fileDialogPlaces::item:hover {{ background: {c['button']}; }}
+    QTreeView#fileDialogView {{ background: {c['paper']}; color: {c['ink']}; border: 1px solid {c['line']}; border-radius: 8px; outline: 0; padding: 0; selection-background-color: {c['selected']}; selection-color: {c['ink']}; }}
+    QTreeView#fileDialogView::item {{ padding: 5px 8px; }}
+    QTreeView#fileDialogView::item:selected {{ background: {c['selected']}; color: {c['ink']}; }}
+    QTreeView#fileDialogView::item:hover {{ background: {c['button']}; }}
+    QTreeView#fileDialogView QHeaderView::section {{ background: {c['side']}; color: {c['muted']}; border: none; border-bottom: 1px solid {c['line']}; padding: 9px 10px 6px 10px; font-weight: 600; }}
+    QTreeView#fileDialogView QHeaderView::section:hover {{ color: {c['ink']}; background: {c['button']}; }}
+    QComboBox#fileFilterCombo {{ background: {c['side']}; border: 1px solid {c['line']}; border-radius: 8px; padding: 6px 32px 6px 10px; min-height: 24px; }}
+    QComboBox#fileFilterCombo:hover {{ background: {c['button']}; border-color: {c['muted']}; }}
+    QComboBox#fileFilterCombo:focus {{ border-color: {c['accent']}; }}
+    QComboBox#fileFilterCombo::drop-down {{ subcontrol-origin: padding; subcontrol-position: top right; width: 28px; border: none; border-top-right-radius: 7px; border-bottom-right-radius: 7px; }}
+    QComboBox#fileFilterCombo::drop-down:hover {{ background: {c['selected']}; }}
+    QComboBox#fileFilterCombo::down-arrow {{ image: none; width: 0; height: 0; border-left: 4px solid transparent; border-right: 4px solid transparent; border-top: 5px solid {c['muted']}; margin-top: 2px; }}
+    QComboBox#fileFilterCombo QAbstractItemView {{ background: {c['paper']}; color: {c['ink']}; selection-background-color: {c['selected']}; selection-color: {c['ink']}; border: 1px solid {c['line']}; border-radius: 8px; padding: 4px; outline: 0; }}
+    QTreeView#fileDialogView QScrollBar:vertical, QListWidget#fileDialogPlaces QScrollBar:vertical {{ background: {c['side']}; width: 10px; margin: 0; }}
+    QTreeView#fileDialogView QScrollBar::handle:vertical, QListWidget#fileDialogPlaces QScrollBar::handle:vertical {{ background: {c['muted']}; min-height: 25px; border-radius: 4px; }}
+    QTreeView#fileDialogView QScrollBar::handle:vertical:hover, QListWidget#fileDialogPlaces QScrollBar::handle:vertical:hover {{ background: {c['accent']}; }}
+    QTreeView#fileDialogView QScrollBar::add-line:vertical, QTreeView#fileDialogView QScrollBar::sub-line:vertical, QListWidget#fileDialogPlaces QScrollBar::add-line:vertical, QListWidget#fileDialogPlaces QScrollBar::sub-line:vertical {{ height: 0; }}
+    QTreeView#fileDialogView QScrollBar::add-page:vertical, QTreeView#fileDialogView QScrollBar::sub-page:vertical, QListWidget#fileDialogPlaces QScrollBar::add-page:vertical, QListWidget#fileDialogPlaces QScrollBar::sub-page:vertical {{ background: transparent; }}
     """

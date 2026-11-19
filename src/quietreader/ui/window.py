@@ -7,7 +7,7 @@ import sys
 from PySide6.QtCore import QEvent, QObject, QPoint, QRunnable, QThreadPool, Qt, QTimer, Signal
 from PySide6.QtGui import QAction, QGuiApplication, QIcon, QKeySequence, QShortcut
 from PySide6.QtWidgets import (
-    QApplication, QComboBox, QDialog, QFileDialog, QHBoxLayout, QLabel, QInputDialog, QMessageBox,
+    QApplication, QComboBox, QDialog, QHBoxLayout, QLabel, QInputDialog, QMessageBox,
     QListWidget, QListWidgetItem, QMainWindow, QMenu, QPushButton, QSizePolicy, QStackedWidget,
     QSizeGrip, QProgressBar, QSlider, QSystemTrayIcon, QTabWidget, QVBoxLayout, QWidget,
 )
@@ -23,6 +23,7 @@ from quietreader.ui.theme import colors, stylesheet
 from quietreader.i18n import tr, install_qt_translator
 from quietreader.ui.layout_panel import LayoutPanel
 from quietreader.ui.book_info import BookInfoPanel
+from quietreader.ui.file_dialog import BookFileDialog, default_book_directory
 from quietreader.persistence.store import MAX_BOOKMARKS, MAX_BOOKMARK_NOTE, MAX_BOOK_RECORDS
 from quietreader.library.shelf import ShelfError, ShelfManager, UNCLASSIFIED, book_id_for_path
 from quietreader.ui.shelf import ShelfPanel
@@ -146,6 +147,7 @@ class MainWindow(QMainWindow):
         self.section_index = 0
         self.loading = False
         self.pending_path = None
+        self._last_browse_dir = ""
         self.quitting = False
         self.closed = False
         self.focus_mode = False
@@ -493,9 +495,17 @@ class MainWindow(QMainWindow):
         if self.loading:
             return
         self.reveal()
-        files, _ = QFileDialog.getOpenFileNames(self, self.t("添加本地书籍"), "", self.t("阅读文件 (*.txt *.epub);;TXT (*.txt);;EPUB (*.epub)"), options=QFileDialog.Option.DontUseNativeDialog)
-        if files:
-            self.add_book_paths(files)
+        start_directory = default_book_directory(
+            self.store.state["books"],
+            self.shelf_manager,
+            self._last_browse_dir,
+        )
+        dialog = BookFileDialog(start_directory, self.settings.language, self)
+        if dialog.exec() == QDialog.DialogCode.Accepted:
+            files = dialog.selected_files()
+            if files:
+                self._last_browse_dir = str(Path(files[0]).parent)
+                self.add_book_paths(files)
 
     def add_book_paths(self, paths, open_after=False):
         if self.loading or self.store.read_only:
