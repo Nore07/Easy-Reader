@@ -1,0 +1,41 @@
+name: "Feature request / 功能建议"
+description: "Suggest an improvement to QuietReader / 为 QuietReader 提出改进建议"
+title: "[Feature] "
+labels:
+  - enhancement
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Search existing Issues first so related ideas can be discussed together. Please avoid including private book contents or personal data.
+
+        请先搜索已有 Issues，方便把相关想法放在一起讨论。请勿附上私人书籍内容或个人数据。
+  - type: textarea
+    id: problem
+    attributes:
+      label: "Use case or problem / 使用场景或问题"
+      description: "What are you trying to do, and what is difficult today? / 你想完成什么，目前遇到什么不便？"
+      placeholder: "Describe the situation / 描述使用场景"
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: "Suggested solution / 建议的改进"
+      description: "Describe the behavior or outcome you would like. / 描述你希望实现的行为或结果。"
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: "Alternatives or workarounds / 其他方案或临时办法"
+      description: "Optional: mention approaches you considered or currently use. / 可选：说明考虑过的方案或当前使用的临时办法。"
+    validations:
+      required: false
+  - type: textarea
+    id: context
+    attributes:
+      label: "Additional context / 补充信息"
+      description: "Screenshots or examples can help; remove personal information first. / 截图或示例可能有帮助；请先移除个人信息。"
+    validations:
+      required: false
