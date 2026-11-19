@@ -1,14 +1,33 @@
 import argparse
+import hashlib
 from pathlib import Path
 import sys
 
 from PySide6.QtCore import QLockFile, QStandardPaths, QTimer
+from PySide6.QtNetwork import QLocalServer, QLocalSocket
 from PySide6.QtWidgets import QApplication, QMessageBox
 
 from quietreader.persistence.data_paths import application_data_directory, legacy_migration_needed, migrate_legacy_data
 from quietreader.persistence.store import StateStore
 from quietreader.ui.window import MainWindow
 from quietreader.i18n import tr
+
+
+def _instance_server_name(directory: Path) -> str:
+    identity = str(directory.resolve()).casefold().encode("utf-8")
+    return "QuietReader-" + hashlib.sha256(identity).hexdigest()[:24]
+
+
+def _wake_running_instance(server_name: str) -> bool:
+    socket = QLocalSocket()
+    socket.connectToServer(server_name)
+    if not socket.waitForConnected(500):
+        return False
+    socket.write(b"show")
+    socket.flush()
+    delivered = socket.waitForBytesWritten(500)
+    socket.disconnectFromServer()
+    return delivered
 
 
 def main():
@@ -28,7 +47,10 @@ def main():
         return 1
     lock = QLockFile(str(directory / "quietreader.lock"))
     lock.setStaleLockTime(0)
+    server_name = _instance_server_name(directory)
     if not lock.tryLock(100):
+        if _wake_running_instance(server_name):
+            return 0
         QMessageBox.information(None, tr("QuietReader 已在运行"), tr("同一数据目录的阅读器已在运行，请从托盘显示窗口。"))
         return 0
     if args.data_dir is None:
@@ -48,11 +70,47 @@ def main():
                 return 1
             finally:
                 legacy_lock.unlock()
+
+    # The file lock guarantees there is no active owner for this data
+    # directory, so it is safe to clear a stale local-server endpoint.
+    QLocalServer.removeServer(server_name)
+    activation_server = QLocalServer(app)
+    activation_server.listen(server_name)
+    window_ref = {"window": None}
+    pending_activation = [False]
+
+    def accept_activation():
+        while activation_server.hasPendingConnections():
+            client = activation_server.nextPendingConnection()
+            received = bytearray()
+
+            def receive_command(socket=client, buffer=received):
+                buffer.extend(bytes(socket.readAll()))
+                if len(buffer) < 4:
+                    return
+                if buffer == b"show":
+                    window = window_ref["window"]
+                    if window is None:
+                        pending_activation[0] = True
+                    else:
+                        window.reveal()
+                socket.disconnectFromServer()
+                socket.deleteLater()
+
+            client.readyRead.connect(receive_command)
+            if client.bytesAvailable():
+                receive_command()
+
+    activation_server.newConnection.connect(accept_activation)
     app._quietreader_release_lock = lock.unlock
     window = MainWindow(StateStore(directory))
+    window_ref["window"] = window
     app.aboutToQuit.connect(window.shutdown)
     app.commitDataRequest.connect(lambda *_: window.save_state())
     window.show()
+    QTimer.singleShot(0, window.reveal)
+    if pending_activation[0]:
+        QTimer.singleShot(0, window.reveal)
     QTimer.singleShot(0, lambda: window.add_book_paths([args.file], open_after=True) if args.file else window.restore_last())
     code = app.exec()
     lock.unlock()
