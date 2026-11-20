@@ -6,7 +6,7 @@ from PySide6.QtCore import QMimeData, QRect, QSize, Qt, Signal
 from PySide6.QtGui import QDrag, QFont, QFontMetrics, QPalette
 from PySide6.QtWidgets import (
     QApplication, QAbstractItemView, QHBoxLayout, QLabel, QListWidget,
-    QListWidgetItem, QPushButton, QStyle, QStyleOptionViewItem,
+    QListWidgetItem, QMenu, QPushButton, QStyle, QStyleOptionViewItem,
     QStyledItemDelegate, QTabWidget, QVBoxLayout, QWidget,
 )
 
@@ -18,6 +18,13 @@ _BOOK_IDS_MIME_TYPE = "application/x-quietreader-book-ids"
 _BOOK_TITLE_ROLE = Qt.ItemDataRole.UserRole + 1
 _BOOK_DETAIL_ROLE = Qt.ItemDataRole.UserRole + 2
 _BOOK_PROGRESS_ROLE = Qt.ItemDataRole.UserRole + 3
+
+
+def display_title_for_record(record):
+    override = record.get("title_override")
+    if isinstance(override, str) and override.strip():
+        return override
+    return record.get("title") or Path(record["path"]).stem
 
 
 class BookItemDelegate(QStyledItemDelegate):
@@ -170,6 +177,7 @@ class CategoryDropListWidget(QListWidget):
 class ShelfPanel(QWidget):
     add_requested = Signal()
     open_requested = Signal(str)
+    rename_requested = Signal(str)
     move_books_requested = Signal(list, str)
     remove_requested = Signal(str)
     create_category_requested = Signal()
@@ -217,9 +225,12 @@ class ShelfPanel(QWidget):
         all_actions = QHBoxLayout(all_toolbar)
         all_actions.setContentsMargins(0, 0, 0, 0)
         all_actions.setSpacing(8)
+        self.all_rename = QPushButton()
+        self.all_rename.clicked.connect(lambda: self._rename_current(self.all_books))
         self.all_remove = QPushButton()
         self.all_remove.setObjectName("quietAction")
         self.all_remove.clicked.connect(lambda: self._remove_selected(self.all_books))
+        all_actions.addWidget(self.all_rename)
         all_actions.addWidget(self.all_remove)
         all_actions.addStretch(1)
         all_layout.addWidget(all_toolbar)
@@ -236,9 +247,12 @@ class ShelfPanel(QWidget):
         category_actions = QHBoxLayout(category_toolbar)
         category_actions.setContentsMargins(0, 0, 0, 0)
         category_actions.setSpacing(8)
+        self.category_rename = QPushButton()
+        self.category_rename.clicked.connect(lambda: self._rename_current(self.category_books))
         self.category_remove = QPushButton()
         self.category_remove.setObjectName("quietAction")
         self.category_remove.clicked.connect(lambda: self._remove_selected(self.category_books))
+        category_actions.addWidget(self.category_rename)
         category_actions.addWidget(self.category_remove)
         category_actions.addStretch(1)
         category_layout.addWidget(category_toolbar)
@@ -274,6 +288,10 @@ class ShelfPanel(QWidget):
         if openable:
             widget.setWordWrap(False)
             widget.setItemDelegate(BookItemDelegate(widget))
+            widget.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+            widget.customContextMenuRequested.connect(
+                lambda point, target=widget: self._show_book_context_menu(target, point)
+            )
             widget.itemActivated.connect(self._open_item)
         else:
             widget.setWordWrap(True)
@@ -290,9 +308,15 @@ class ShelfPanel(QWidget):
         self.category_delete.setText(tr("删除分类", language))
         self.category_list.setToolTip(tr("将右侧书籍拖到分类上即可快速移动。", language))
         self.category_books.setToolTip(tr("按住 Ctrl 或 Shift 多选，再拖到左侧分类。", language))
+        self.all_rename.setText(tr("改名", language))
+        self.all_rename.setToolTip(tr("修改显示书名", language))
+        self.all_rename.setAccessibleName(tr("修改显示书名", language))
         self.all_remove.setText(tr("移除", language))
         self.all_remove.setToolTip(tr("从书架移除", language))
         self.all_remove.setAccessibleName(tr("从书架移除", language))
+        self.category_rename.setText(tr("改名", language))
+        self.category_rename.setToolTip(tr("修改显示书名", language))
+        self.category_rename.setAccessibleName(tr("修改显示书名", language))
         self.category_remove.setText(tr("移除", language))
         self.category_remove.setToolTip(tr("从书架移除", language))
         self.category_remove.setAccessibleName(tr("从书架移除", language))
@@ -340,7 +364,7 @@ class ShelfPanel(QWidget):
             return
         category_name = self.category_list.currentItem().data(Qt.ItemDataRole.UserRole) if self.category_list.currentItem() else UNCLASSIFIED
         recent_records = sorted((r for r in self.records if r.get("last_read")), key=lambda r: r.get("last_read", ""), reverse=True)
-        all_records = sorted(self.records, key=lambda r: r.get("title", "").casefold())
+        all_records = sorted(self.records, key=lambda r: display_title_for_record(r).casefold())
         self._fill(self.recent, recent_records[:100])
         self._fill(self.all_books, all_records)
         targets = [UNCLASSIFIED, *self.categories]
@@ -357,7 +381,7 @@ class ShelfPanel(QWidget):
     def _fill(self, widget, records):
         widget.clear()
         for record in records:
-            title = record.get("title") or Path(record["path"]).stem
+            title = display_title_for_record(record)
             chapter = record.get("reading_chapter")
             progress = record.get("reading_progress")
             has_progress = type(progress) in (int, float) and isfinite(progress)
@@ -394,7 +418,7 @@ class ShelfPanel(QWidget):
         item = self.category_list.currentItem()
         category = item.data(Qt.ItemDataRole.UserRole) if item else UNCLASSIFIED
         records = [record for record in self.records if self._category_for_path(record["path"]) == category]
-        records.sort(key=lambda r: r.get("title", "").casefold())
+        records.sort(key=lambda r: display_title_for_record(r).casefold())
         self._fill(self.category_books, records)
         self.category_delete.setEnabled(
             self.tabs.currentIndex() == 2 and category != UNCLASSIFIED and category in self.categories
@@ -404,6 +428,24 @@ class ShelfPanel(QWidget):
         book_id = item.data(Qt.ItemDataRole.UserRole)
         if book_id:
             self.open_requested.emit(book_id)
+
+    def _rename_current(self, widget):
+        item = widget.currentItem()
+        if item is not None:
+            book_id = item.data(Qt.ItemDataRole.UserRole)
+            if book_id:
+                self.rename_requested.emit(book_id)
+
+    def _show_book_context_menu(self, widget, point):
+        item = widget.itemAt(point)
+        if item is None:
+            return
+        menu = QMenu(widget)
+        rename_action = menu.addAction(tr("修改显示书名", self.language))
+        if menu.exec(widget.mapToGlobal(point)) == rename_action:
+            book_id = item.data(Qt.ItemDataRole.UserRole)
+            if book_id:
+                self.rename_requested.emit(book_id)
 
     def _remove_selected(self, widget):
         item = widget.currentItem()

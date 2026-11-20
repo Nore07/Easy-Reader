@@ -7,8 +7,8 @@ import sys
 from PySide6.QtCore import QEvent, QObject, QPoint, QRunnable, QThreadPool, Qt, QTimer, Signal
 from PySide6.QtGui import QAction, QGuiApplication, QIcon, QKeySequence, QShortcut
 from PySide6.QtWidgets import (
-    QApplication, QComboBox, QDialog, QHBoxLayout, QLabel, QInputDialog, QMessageBox,
-    QListWidget, QListWidgetItem, QMainWindow, QMenu, QPushButton, QSizePolicy, QStackedWidget,
+    QApplication, QComboBox, QDialog, QHBoxLayout, QLabel, QInputDialog, QLineEdit,
+    QMessageBox, QListWidget, QListWidgetItem, QMainWindow, QMenu, QPushButton, QSizePolicy, QStackedWidget,
     QSizeGrip, QProgressBar, QSlider, QSystemTrayIcon, QTabWidget, QVBoxLayout, QWidget,
 )
 
@@ -27,7 +27,7 @@ from quietreader.ui.file_dialog import BookFileDialog, default_book_directory
 from quietreader.ui.toast import ToastNotice
 from quietreader.persistence.store import MAX_BOOKMARKS, MAX_BOOKMARK_NOTE, MAX_BOOK_RECORDS
 from quietreader.library.shelf import SUPPORTED_SUFFIXES, ShelfError, ShelfManager, UNCLASSIFIED, book_id_for_path
-from quietreader.ui.shelf import ShelfPanel
+from quietreader.ui.shelf import ShelfPanel, display_title_for_record
 
 
 def classify_dropped_urls(urls, max_items=MAX_BOOK_RECORDS):
@@ -457,6 +457,7 @@ class MainWindow(QMainWindow):
             self.shelf_actions_layout.addWidget(button)
         self.shelf.add_requested.connect(self.choose_file)
         self.shelf.open_requested.connect(self.open_shelf_book)
+        self.shelf.rename_requested.connect(self.prompt_rename_shelf_book)
         self.shelf.move_books_requested.connect(self.move_shelf_books)
         self.shelf.remove_requested.connect(self._confirm_remove_shelf_book)
         self.shelf.create_category_requested.connect(self.prompt_create_shelf_category)
@@ -667,6 +668,64 @@ class MainWindow(QMainWindow):
             encoding = record.get("encoding", "auto")
             self.load_path(record["path"], encoding if encoding in ENCODINGS else "auto")
 
+    def prompt_rename_shelf_book(self, book_id):
+        if self.store.read_only or self.loading:
+            if self.store.read_only:
+                self.set_status("保存数据来自不支持的版本。已保护原文件，本次不会保存更改。")
+            return
+        record = next((item for item in self.store.state["books"] if item["id"] == book_id), None)
+        if record is None:
+            return
+        name, accepted = QInputDialog.getText(
+            self,
+            self.t("修改显示书名"),
+            self.t("输入新的书名；留空可恢复软件导入时识别的原书名。"),
+            QLineEdit.EchoMode.Normal,
+            display_title_for_record(record),
+        )
+        if accepted:
+            self.rename_shelf_book(book_id, name)
+
+    def rename_shelf_book(self, book_id, name):
+        if self.store.read_only or self.loading:
+            if self.store.read_only:
+                self.set_status("保存数据来自不支持的版本。已保护原文件，本次不会保存更改。")
+            return False
+        record = next((item for item in self.store.state["books"] if item["id"] == book_id), None)
+        if record is None:
+            return False
+
+        previous_override = record.get("title_override")
+        original_title = record.get("title") or Path(record["path"]).stem
+        name = name.strip() if isinstance(name, str) else ""
+        if len(name) > 200:
+            self.set_status("书名不能超过 200 个字符。")
+            return False
+        if not name or name == original_title:
+            record.pop("title_override", None)
+            restored = True
+        else:
+            # This is a state.json display override; the managed book file stays untouched.
+            record["title_override"] = name
+            restored = False
+        display_title = display_title_for_record(record)
+        if record.get("title_override") == previous_override:
+            return False
+
+        self._refresh_shelf()
+        if self.book and self.book.id == book_id:
+            self.setWindowTitle(f"{display_title} · QuietReader")
+            self.book_title.setText(display_title)
+            self.book_info.set_book(
+                self.book, self.settings.language, display_title=display_title,
+            )
+        if restored:
+            self.set_status("已恢复原书名：{title}", title=display_title)
+        else:
+            self.set_status("书名显示已更新：{title}", title=display_title)
+        self.save_state()
+        return True
+
     def create_shelf_category(self, name):
         if self.store.read_only:
             self.set_status("保存数据来自不支持的版本。已保护原文件，本次不会保存更改。")
@@ -769,7 +828,7 @@ class MainWindow(QMainWindow):
             return
         if len(records) == 1:
             record = moved_records[0]
-            title = record.get("title") or Path(record["path"]).stem
+            title = display_title_for_record(record)
             self.set_status(
                 "已将《{title}》移动到“{category}”。", title=title, category=category_name,
                 toast_action_text="查看分类",
@@ -806,7 +865,7 @@ class MainWindow(QMainWindow):
             self._clear_current_book()
         self._refresh_shelf()
         self.save_state()
-        self.set_status("已从书架移除《{title}》。", title=record["title"])
+        self.set_status("已从书架移除《{title}》。", title=display_title_for_record(record))
         return True
 
     def _confirm_remove_shelf_book(self, book_id):
@@ -815,7 +874,7 @@ class MainWindow(QMainWindow):
             return
         answer = QMessageBox.question(
             self, self.t("从书架移除"),
-            self.t("确定从书架移除《{title}》吗？书架中的副本会被删除。", title=record["title"]),
+            self.t("确定从书架移除《{title}》吗？书架中的副本会被删除。", title=display_title_for_record(record)),
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             QMessageBox.StandardButton.No,
         )
@@ -938,11 +997,14 @@ class MainWindow(QMainWindow):
         if self.closed:
             return
         self.book = book
+        record = next((item for item in self.store.state["books"] if item["id"] == book.id), None)
+        title_override = record.get("title_override") if record else None
+        display_title = title_override if isinstance(title_override, str) and title_override.strip() else book.title
         self.show_reading_page()
-        self.setWindowTitle(f"{book.title} · QuietReader")
-        self.book_title.setText(book.title)
+        self.setWindowTitle(f"{display_title} · QuietReader")
+        self.book_title.setText(display_title)
         self.book_title.setProperty("translation_source", None)
-        self.book_info.set_book(book, self.settings.language)
+        self.book_info.set_book(book, self.settings.language, display_title=display_title)
         self.reading_tabs.setTabVisible(2, True)
         self._refresh_bookmarks()
         self.chapters.clear()
@@ -974,7 +1036,6 @@ class MainWindow(QMainWindow):
         raw = self.store.state["positions"].get(book.id, {})
         index, offset = restore_position(book.sections, Position(raw.get("section_id", ""), raw.get("offset", 0)))
         self.open_section(index, offset)
-        record = next((item for item in self.store.state["books"] if item["id"] == book.id), None)
         if record is None:
             record = {"id": book.id, "path": book.path, "title": book.title, "author": book.author, "encoding": book.encoding, "last_read": ""}
         record.update({"id": book.id, "path": book.path, "title": book.title, "author": book.author, "encoding": book.encoding, "last_read": datetime.now(timezone.utc).isoformat()})
@@ -1494,7 +1555,15 @@ class MainWindow(QMainWindow):
         for index, source in enumerate(("目录", "书签", "资料", "页码", "位置")):
             self.reading_tabs.setTabText(index, self.t(source))
         self.shelf.retranslate(self.settings.language)
-        self.book_info.set_book(self.book, self.settings.language)
+        record = next((item for item in self.store.state["books"] if self.book and item["id"] == self.book.id), None)
+        display_title = display_title_for_record(record) if record else (self.book.title if self.book else None)
+        self.book_info.set_book(
+            self.book, self.settings.language,
+            display_title=display_title,
+        )
+        if self.book:
+            self.book_title.setText(display_title)
+            self.setWindowTitle(f"{display_title} · QuietReader")
         self._update_progress()
         self.encoding.setItemText(0, self.t("自动识别"))
         self.focus_button.setText(self.t("退出专注" if self.focus_mode else "专注"))
