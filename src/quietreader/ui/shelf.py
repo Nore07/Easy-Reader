@@ -5,7 +5,7 @@ from pathlib import Path
 from PySide6.QtCore import QMimeData, QRect, QSize, Qt, Signal
 from PySide6.QtGui import QDrag, QFont, QFontMetrics, QPalette
 from PySide6.QtWidgets import (
-    QApplication, QAbstractItemView, QComboBox, QHBoxLayout, QLabel, QListWidget,
+    QApplication, QAbstractItemView, QHBoxLayout, QLabel, QListWidget,
     QListWidgetItem, QPushButton, QStyle, QStyleOptionViewItem,
     QStyledItemDelegate, QTabWidget, QVBoxLayout, QWidget,
 )
@@ -170,7 +170,6 @@ class CategoryDropListWidget(QListWidget):
 class ShelfPanel(QWidget):
     add_requested = Signal()
     open_requested = Signal(str)
-    move_requested = Signal(str, str)
     move_books_requested = Signal(list, str)
     remove_requested = Signal(str)
     create_category_requested = Signal()
@@ -218,19 +217,9 @@ class ShelfPanel(QWidget):
         all_actions = QHBoxLayout(all_toolbar)
         all_actions.setContentsMargins(0, 0, 0, 0)
         all_actions.setSpacing(8)
-        self.all_target_label = QLabel()
-        self.all_target_label.setObjectName("toolbarLabel")
-        self.all_target = QComboBox()
-        self.all_target.setObjectName("shelfCategoryCombo")
-        self.all_target.setMinimumWidth(150)
-        self.all_move = QPushButton()
-        self.all_move.clicked.connect(lambda: self._move_selected(self.all_books, self.all_target))
         self.all_remove = QPushButton()
         self.all_remove.setObjectName("quietAction")
         self.all_remove.clicked.connect(lambda: self._remove_selected(self.all_books))
-        all_actions.addWidget(self.all_target_label)
-        all_actions.addWidget(self.all_target)
-        all_actions.addWidget(self.all_move)
         all_actions.addWidget(self.all_remove)
         all_actions.addStretch(1)
         all_layout.addWidget(all_toolbar)
@@ -247,19 +236,9 @@ class ShelfPanel(QWidget):
         category_actions = QHBoxLayout(category_toolbar)
         category_actions.setContentsMargins(0, 0, 0, 0)
         category_actions.setSpacing(8)
-        self.category_target_label = QLabel()
-        self.category_target_label.setObjectName("toolbarLabel")
-        self.category_target = QComboBox()
-        self.category_target.setObjectName("shelfCategoryCombo")
-        self.category_target.setMinimumWidth(150)
-        self.category_move = QPushButton()
-        self.category_move.clicked.connect(lambda: self._move_selected(self.category_books, self.category_target))
         self.category_remove = QPushButton()
         self.category_remove.setObjectName("quietAction")
         self.category_remove.clicked.connect(lambda: self._remove_selected(self.category_books))
-        category_actions.addWidget(self.category_target_label)
-        category_actions.addWidget(self.category_target)
-        category_actions.addWidget(self.category_move)
         category_actions.addWidget(self.category_remove)
         category_actions.addStretch(1)
         category_layout.addWidget(category_toolbar)
@@ -305,28 +284,18 @@ class ShelfPanel(QWidget):
         self.add_button.setText(tr("添加书籍", language))
         self.add_button.setToolTip(tr("添加本地 TXT / EPUB 到书架 · Ctrl+O", language))
         self.add_button.setAccessibleName(tr("添加书籍", language))
-        self.all_target_label.setText(tr("移动到分类", language))
-        self.category_target_label.setText(tr("移动到分类", language))
         for index, source in enumerate(("最近阅读", "所有书籍", "分类")):
             self.tabs.setTabText(index, tr(source, language))
         self.category_create.setText(tr("新建分类", language))
         self.category_delete.setText(tr("删除分类", language))
         self.category_list.setToolTip(tr("将右侧书籍拖到分类上即可快速移动。", language))
         self.category_books.setToolTip(tr("按住 Ctrl 或 Shift 多选，再拖到左侧分类。", language))
-        self.all_move.setText(tr("移动", language))
-        self.all_move.setToolTip(tr("移动到分类", language))
-        self.all_move.setAccessibleName(tr("移动到分类", language))
         self.all_remove.setText(tr("移除", language))
         self.all_remove.setToolTip(tr("从书架移除", language))
         self.all_remove.setAccessibleName(tr("从书架移除", language))
-        self.category_move.setText(tr("移动", language))
-        self.category_move.setToolTip(tr("移动到分类", language))
-        self.category_move.setAccessibleName(tr("移动到分类", language))
         self.category_remove.setText(tr("移除", language))
         self.category_remove.setToolTip(tr("从书架移除", language))
         self.category_remove.setAccessibleName(tr("从书架移除", language))
-        self.all_target.setToolTip(tr("移动到分类", language))
-        self.category_target.setToolTip(tr("移动到分类", language))
         self._set_accessible_names(language)
         self._refresh_lists()
 
@@ -369,23 +338,12 @@ class ShelfPanel(QWidget):
     def _refresh_lists(self):
         if not hasattr(self, "all_books"):
             return
-        target_data = self.all_target.currentData() if self.all_target.count() else None
-        category_target_data = self.category_target.currentData() if self.category_target.count() else None
         category_name = self.category_list.currentItem().data(Qt.ItemDataRole.UserRole) if self.category_list.currentItem() else UNCLASSIFIED
         recent_records = sorted((r for r in self.records if r.get("last_read")), key=lambda r: r.get("last_read", ""), reverse=True)
         all_records = sorted(self.records, key=lambda r: r.get("title", "").casefold())
         self._fill(self.recent, recent_records[:100])
         self._fill(self.all_books, all_records)
-        self.all_target.clear()
-        self.category_target.clear()
         targets = [UNCLASSIFIED, *self.categories]
-        for combo in (self.all_target, self.category_target):
-            for name in targets:
-                combo.addItem(tr("未分类", self.language) if name == UNCLASSIFIED else name, name)
-        if target_data in targets:
-            self.all_target.setCurrentIndex(self.all_target.findData(target_data))
-        if category_target_data in targets:
-            self.category_target.setCurrentIndex(self.category_target.findData(category_target_data))
         self.category_list.clear()
         for name in targets:
             item = QListWidgetItem(tr("未分类", self.language) if name == UNCLASSIFIED else name)
@@ -446,24 +404,6 @@ class ShelfPanel(QWidget):
         book_id = item.data(Qt.ItemDataRole.UserRole)
         if book_id:
             self.open_requested.emit(book_id)
-
-    def _move_selected(self, widget, target):
-        book_ids = [
-            item.data(Qt.ItemDataRole.UserRole)
-            for item in widget.selectedItems()
-            if item.data(Qt.ItemDataRole.UserRole)
-        ]
-        if not book_ids and widget.currentItem() is not None:
-            book_id = widget.currentItem().data(Qt.ItemDataRole.UserRole)
-            if book_id:
-                book_ids = [book_id]
-        category = target.currentData()
-        if not book_ids or not category:
-            return
-        if len(book_ids) == 1:
-            self.move_requested.emit(book_ids[0], category)
-        else:
-            self.move_books_requested.emit(book_ids, category)
 
     def _remove_selected(self, widget):
         item = widget.currentItem()

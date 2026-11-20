@@ -457,7 +457,6 @@ class MainWindow(QMainWindow):
             self.shelf_actions_layout.addWidget(button)
         self.shelf.add_requested.connect(self.choose_file)
         self.shelf.open_requested.connect(self.open_shelf_book)
-        self.shelf.move_requested.connect(self.move_shelf_book)
         self.shelf.move_books_requested.connect(self.move_shelf_books)
         self.shelf.remove_requested.connect(self._confirm_remove_shelf_book)
         self.shelf.create_category_requested.connect(self.prompt_create_shelf_category)
@@ -706,9 +705,6 @@ class MainWindow(QMainWindow):
             self.book.id = new_id
             self.book.path = str(new_path)
         return new_id
-
-    def move_shelf_book(self, book_id, category):
-        self.move_shelf_books([book_id], category)
 
     def move_shelf_books(self, book_ids, category):
         if self.store.read_only or self.loading:
