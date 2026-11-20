@@ -182,6 +182,7 @@ class MainWindow(QMainWindow):
         self._last_browse_dir = store.state.get("last_browse_dir", "")
         self.quitting = False
         self.closed = False
+        self._window_hidden = False
         self.focus_mode = False
         self.sidebar_collapsed = False
         self._focus_opacity_override = None
@@ -193,6 +194,7 @@ class MainWindow(QMainWindow):
         self._drag_has_valid = False
         self._chrome_visibility = {}
         self.status_source = ("离线优先。添加书籍即可开始阅读。", {})
+        self._toast_status_source = None
         self.tray = None
         self.hotkey = None
         self.emergency_hotkey = None
@@ -498,6 +500,7 @@ class MainWindow(QMainWindow):
         self.emergency_shortcut.setAutoRepeat(False)
         self.emergency_shortcut.activated.connect(self.emergency_exit)
         self.toast = ToastNotice(self.surface)
+        self.main_pages.currentChanged.connect(self._main_page_changed)
         self._update_progress()
 
     def _setup_system(self):
@@ -624,7 +627,7 @@ class MainWindow(QMainWindow):
         elif added:
             self.set_status("所选书籍已在书架中。")
         if open_after and added:
-            record = added[-1]
+            record = added[0]
             encoding = record.get("encoding", "auto")
             self.load_path(record["path"], encoding if encoding in ENCODINGS else "auto")
         return added
@@ -1253,6 +1256,10 @@ class MainWindow(QMainWindow):
         self.main_pages.setCurrentWidget(self.shelf)
         self._sync_page_navigation()
 
+    def _main_page_changed(self, *_):
+        if hasattr(self, "toast") and not self.toast.isHidden() and not self._window_hidden:
+            self.toast.reposition(self._toast_bottom_margin())
+
     def toggle_maximize(self):
         if self.focus_mode:
             return
@@ -1340,7 +1347,8 @@ class MainWindow(QMainWindow):
         self.status.setProperty("translation_source", None)
         text = self.t(source, **values)
         self.status.setText(text)
-        if notify and hasattr(self, "toast") and not self.focus_mode and not self.closed:
+        if notify and hasattr(self, "toast") and not self.focus_mode and not self.closed and not self._window_hidden:
+            self._toast_status_source = (source, dict(values))
             self.toast.show_message(text, bottom_margin=self._toast_bottom_margin())
 
     def _set_shelf_error(self, error):
@@ -1402,7 +1410,8 @@ class MainWindow(QMainWindow):
             self.setWindowTitle("QuietReader")
         self.set_status(self.status_source[0], notify=False, **self.status_source[1])
         if hasattr(self, "toast") and not self.toast.isHidden():
-            self.toast.update_text(self.status.text())
+            source, values = self._toast_status_source or self.status_source
+            self.toast.update_text(self.t(source, **values))
 
     def _apply_window_style(self):
         if self.focus_mode:
@@ -1613,11 +1622,13 @@ class MainWindow(QMainWindow):
             self.toast.reposition(self._toast_bottom_margin())
 
     def showEvent(self, event):
+        self._window_hidden = False
         super().showEvent(event)
         if hasattr(self, "toast") and not self.toast.isHidden():
             self.toast.reposition(self._toast_bottom_margin())
 
     def hideEvent(self, event):
+        self._window_hidden = True
         if hasattr(self, "toast"):
             self.toast.dismiss()
         super().hideEvent(event)
@@ -1777,7 +1788,7 @@ class MainWindow(QMainWindow):
         open_after = self.book is None and self.main_pages.currentWidget() is self.reader_page
         added = self.add_book_paths(valid_paths, open_after=open_after, skipped_count=skipped)
         if added and not open_after and self.main_pages.currentWidget() is self.shelf:
-            self.shelf.reveal_book(added[-1]["id"])
+            self.shelf.reveal_book(added[0]["id"])
 
     def eventFilter(self, watched, event):
         event_type = event.type()

@@ -97,7 +97,7 @@ def _accessible_dir(candidate: Path) -> Path | None:
         with os.scandir(resolved):
             pass
         return resolved
-    except OSError:
+    except (OSError, RuntimeError):
         return None
 
 
@@ -119,7 +119,7 @@ def default_book_directory(books, shelf_manager=None, fallback_last: str = "") -
     if shelf_manager is not None:
         try:
             shelf_root = shelf_manager.root.resolve()
-        except OSError:
+        except (OSError, RuntimeError):
             shelf_root = None
 
     for record in books or ():
@@ -584,7 +584,7 @@ class BookFileDialog(QDialog):
                     self.hint_label.setText(self.t("找不到路径，请检查后重试。"))
                     return False
                 target = resolved
-            except OSError:
+            except (OSError, RuntimeError):
                 self.hint_label.setText(self.t("找不到路径，请检查后重试。"))
                 return False
 
@@ -730,7 +730,7 @@ class BookFileDialog(QDialog):
                     return
                 self.hint_label.setText(self.t("请选择 TXT 或 EPUB 文件。"))
                 return
-        except OSError:
+        except (OSError, RuntimeError):
             pass
         self.hint_label.setText(self.t("找不到路径，请检查后重试。"))
 
