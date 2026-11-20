@@ -5,6 +5,7 @@ import os
 from pathlib import Path
 import re
 import shutil
+import stat
 import uuid
 
 
@@ -216,9 +217,20 @@ class ShelfManager:
         source, managed = self._managed_source(path)
         if not managed:
             return False
+        original_mode = None
         try:
+            if os.name == "nt":
+                original_mode = source.stat().st_mode
+                if not original_mode & stat.S_IWRITE:
+                    # copy2 preserves Windows' read-only flag from the source book.
+                    source.chmod(original_mode | stat.S_IWRITE)
             source.unlink()
         except OSError as error:
+            if original_mode is not None and not original_mode & stat.S_IWRITE:
+                try:
+                    source.chmod(original_mode)
+                except OSError:
+                    pass
             raise ShelfError(f"删除书架书籍失败：{_filesystem_detail(error)}") from None
         return True
 

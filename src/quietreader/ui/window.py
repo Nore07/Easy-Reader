@@ -304,6 +304,12 @@ class MainWindow(QMainWindow):
         page_navigation_layout.addWidget(self.sidebar_toggle)
         tools.addWidget(self.page_navigation)
         tools.addStretch(1)
+        self.shelf_actions = QWidget()
+        self.shelf_actions.setObjectName("shelfActions")
+        self.shelf_actions_layout = QHBoxLayout(self.shelf_actions)
+        self.shelf_actions_layout.setContentsMargins(0, 0, 0, 0)
+        self.shelf_actions_layout.setSpacing(6)
+        tools.addWidget(self.shelf_actions)
         self.pin_button = self._button("置顶", self.toggle_pin, True)
         tools.addWidget(self.pin_button)
         self.encoding_button = self._button("编码", self.toggle_encoding)
@@ -447,6 +453,8 @@ class MainWindow(QMainWindow):
         self.main_pages.addWidget(self.reader_page)
         self.shelf = ShelfPanel()
         self.open_button = self.shelf.add_button
+        for button in (self.shelf.add_button, self.shelf.category_create, self.shelf.category_delete):
+            self.shelf_actions_layout.addWidget(button)
         self.shelf.add_requested.connect(self.choose_file)
         self.shelf.open_requested.connect(self.open_shelf_book)
         self.shelf.move_requested.connect(self.move_shelf_book)
@@ -1220,6 +1228,12 @@ class MainWindow(QMainWindow):
         if hasattr(self, "reading_button"):
             self.reading_button.setChecked(reading_active)
             self.shelf_button.setChecked(not reading_active)
+        if hasattr(self, "shelf_actions"):
+            self.shelf_actions.setVisible(not reading_active)
+        if hasattr(self, "pin_button"):
+            self.pin_button.setVisible(reading_active)
+        if hasattr(self, "focus_button"):
+            self.focus_button.setVisible(reading_active)
         if hasattr(self, "sidebar"):
             if reading_active and not self.focus_mode and not self.sidebar_collapsed:
                 width = max(150, min(220, int(self.width() * 0.30)))
