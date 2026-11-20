@@ -147,6 +147,57 @@ def stylesheet(palette, alpha=255, borderless=False, resize_outline=False, drop_
         border: 1px solid {line_strong};
         border-radius: 12px;
     }}
+    QLabel#popoverHeading {{ font-size: 13.5px; font-weight: 600; color: {c['ink']}; }}
+    QLabel#popoverLabel {{ font-size: 11.5px; font-weight: 500; color: {c['muted']}; }}
+    QLabel#popoverValue {{ font-size: 11.5px; font-weight: 600; color: {c['ink']}; }}
+    QFrame#popoverDivider {{ background: {c['line']}; border: none; }}
+    QPushButton#stepperButton {{
+        color: {c['ink']};
+        background: {accent_hover};
+        border: 1px solid {c['line']};
+        border-radius: 6px;
+        padding: 0;
+        min-height: 0;
+        font-size: 13px;
+        font-weight: 600;
+    }}
+    QPushButton#stepperButton:hover {{ background: {c['selected']}; border-color: {line_strong}; }}
+    QPushButton#popoverLink {{
+        color: {c['accent']};
+        background: transparent;
+        border: none;
+        padding: 2px 4px;
+        min-height: 0;
+        font-size: 11.5px;
+        font-weight: 600;
+    }}
+    QPushButton#popoverLink:hover {{ text-decoration: underline; background: transparent; border: none; }}
+
+    /* Integrated Foliate-style reading sidebar */
+    QFrame#sidebarBookCard {{
+        background: transparent;
+        border: none;
+        border-bottom: 1px solid {c['line']};
+    }}
+    QLabel#sidebarBookTitle {{ font-size: 13.5px; font-weight: 600; color: {c['ink']}; }}
+    QLabel#sidebarBookMeta {{ font-size: 11px; color: {c['muted']}; }}
+    QFrame#sidebarBottomBar {{
+        background: transparent;
+        border: none;
+        border-top: 1px solid {c['line']};
+    }}
+    QPushButton#sidebarTabBtn {{
+        color: {c['muted']};
+        background: transparent;
+        border: 1px solid transparent;
+        border-radius: 7px;
+        padding: 4px 6px;
+        min-height: 24px;
+        font-size: 11px;
+        font-weight: 500;
+    }}
+    QPushButton#sidebarTabBtn:hover {{ color: {c['ink']}; background: {accent_hover}; }}
+    QPushButton#sidebarTabBtn:checked {{ color: {c['accent']}; background: {accent_soft}; font-weight: 600; }}
 
     /* Surfaces & typography */
     QWidget#sidebar {{ background: {c['side']}; border: 1px solid {c['line']}; border-radius: {RADIUS_CARD}px; }}
