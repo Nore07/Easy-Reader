@@ -105,6 +105,23 @@ class ToastNotice(QFrame):
         if action is not None:
             action()
 
+    def available_text_width(self, action_text=None):
+        parent = self.parentWidget()
+        if parent is None:
+            return 1
+        parent_width = max(200, parent.width())
+        max_width = max(160, min(520, parent_width - 40))
+        available_width = max_width - self._HORIZONTAL_PADDING * 2 - self.layout().spacing()
+        button_width = 0
+        if action_text:
+            previous_text = self.action_button.text()
+            self.action_button.setText(action_text)
+            self.action_button.ensurePolished()
+            button_natural_width = self.action_button.sizeHint().width()
+            self.action_button.setText(previous_text)
+            button_width = min(button_natural_width, max(40, available_width - 40))
+        return max(1, available_width - button_width)
+
     def reposition(self, bottom_margin: int | None = None):
         parent = self.parentWidget()
         if parent is None:

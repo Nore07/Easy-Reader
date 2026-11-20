@@ -5,7 +5,7 @@ import os
 import sys
 
 from PySide6.QtCore import QEvent, QObject, QPoint, QRunnable, QThreadPool, Qt, QTimer, Signal
-from PySide6.QtGui import QAction, QGuiApplication, QIcon, QKeySequence, QShortcut
+from PySide6.QtGui import QAction, QFontMetrics, QGuiApplication, QIcon, QKeySequence, QShortcut
 from PySide6.QtWidgets import (
     QApplication, QComboBox, QDialog, QHBoxLayout, QLabel, QInputDialog, QLineEdit,
     QMessageBox, QListWidget, QListWidgetItem, QMainWindow, QMenu, QPushButton, QSizePolicy, QStackedWidget,
@@ -25,7 +25,9 @@ from quietreader.ui.layout_panel import LayoutPanel
 from quietreader.ui.book_info import BookInfoPanel
 from quietreader.ui.file_dialog import BookFileDialog, default_book_directory
 from quietreader.ui.toast import ToastNotice
-from quietreader.persistence.store import MAX_BOOKMARKS, MAX_BOOKMARK_NOTE, MAX_BOOK_RECORDS
+from quietreader.persistence.store import (
+    MAX_BOOKMARKS, MAX_BOOKMARK_NOTE, MAX_BOOK_RECORDS, MAX_BOOK_TITLE_OVERRIDE,
+)
 from quietreader.library.shelf import SUPPORTED_SUFFIXES, ShelfError, ShelfManager, UNCLASSIFIED, book_id_for_path
 from quietreader.ui.shelf import ShelfPanel, display_title_for_record
 
@@ -697,8 +699,8 @@ class MainWindow(QMainWindow):
 
         previous_override = record.get("title_override")
         original_title = record.get("title") or Path(record["path"]).stem
-        name = name.strip() if isinstance(name, str) else ""
-        if len(name) > 200:
+        name = " ".join(name.split()) if isinstance(name, str) else ""
+        if len(name) > MAX_BOOK_TITLE_OVERRIDE:
             self.set_status("书名不能超过 200 个字符。")
             return False
         if not name or name == original_title:
@@ -808,12 +810,11 @@ class MainWindow(QMainWindow):
                 self._set_shelf_error(error)
                 return
 
-        category_name = self.t("未分类") if category == UNCLASSIFIED else category
         if failures:
             if moved_records:
                 self.set_status(
                     "已将 {moved} 本书移动到“{category}”；另有 {failed} 本失败：{error}",
-                    moved=len(moved_records), failed=len(failures), category=category_name,
+                    moved=len(moved_records), failed=len(failures), category=category,
                     error=str(failures[0]),
                     toast_action_text="查看分类",
                     toast_action=lambda target=category: self.show_shelf_category(target),
@@ -830,13 +831,13 @@ class MainWindow(QMainWindow):
             record = moved_records[0]
             title = display_title_for_record(record)
             self.set_status(
-                "已将《{title}》移动到“{category}”。", title=title, category=category_name,
+                "已将《{title}》移动到“{category}”。", title=title, category=category,
                 toast_action_text="查看分类",
                 toast_action=lambda target=category: self.show_shelf_category(target),
             )
         else:
             self.set_status(
-                "已将 {count} 本书移动到“{category}”。", count=len(moved_records), category=category_name,
+                "已将 {count} 本书移动到“{category}”。", count=len(moved_records), category=category,
                 toast_action_text="查看分类",
                 toast_action=lambda target=category: self.show_shelf_category(target),
             )
@@ -1482,7 +1483,24 @@ class MainWindow(QMainWindow):
         self._apply_window_style()
 
     def t(self, source, **values):
+        if values.get("category") == UNCLASSIFIED:
+            values["category"] = tr("未分类", self.settings.language)
         return tr(source, self.settings.language, **values)
+
+    def _toast_status_text(self, source, values, action_text=None):
+        values = dict(values)
+        if source == "已将《{title}》移动到“{category}”。":
+            title = values.get("title")
+            if isinstance(title, str) and title:
+                context = self.t(source, title="", category=values.get("category", ""))
+                action_label = self.t(action_text) if action_text else None
+                available_width = self.toast.available_text_width(action_label)
+                metrics = QFontMetrics(self.toast.label.font())
+                title_width = max(0, available_width - metrics.horizontalAdvance(context))
+                values["title"] = metrics.elidedText(
+                    title, Qt.TextElideMode.ElideRight, title_width,
+                )
+        return self.t(source, **values)
 
     def _toast_bottom_margin(self):
         if hasattr(self, "main_pages") and self.main_pages.currentWidget() is self.reader_page and hasattr(self, "progress") and not self.progress.isHidden():
@@ -1504,7 +1522,7 @@ class MainWindow(QMainWindow):
         if notify and hasattr(self, "toast") and not self.focus_mode and not self.closed and not self._window_hidden:
             self._toast_status_source = (source, dict(values), toast_action_text, toast_action)
             self.toast.show_message(
-                text,
+                self._toast_status_text(source, values, toast_action_text),
                 bottom_margin=self._toast_bottom_margin(),
                 action_text=self.t(toast_action_text) if toast_action_text else None,
                 action=toast_action,
@@ -1584,7 +1602,7 @@ class MainWindow(QMainWindow):
             else:
                 source, values, action_text, action = toast_state
             self.toast.update_text(
-                self.t(source, **values),
+                self._toast_status_text(source, values, action_text),
                 action_text=self.t(action_text) if action_text else None,
                 action=action,
             )

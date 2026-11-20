@@ -16,6 +16,7 @@ from quietreader.domain.models import Book, EPUBFormatRange, EPUBLink, Navigatio
 
 MAX_FILE = 32 * 1024 * 1024
 MAX_EXPANDED = 64 * 1024 * 1024
+MAX_EPUB_TITLE_LENGTH = 300
 CHUNK_SIZE = 24000
 MAX_EPUB_ANCHORS = 100000
 MAX_EPUB_LINKS = 50000
@@ -591,7 +592,7 @@ def read_epub_title(file: str | Path) -> str | None:
         with zipfile.ZipFile(path) as archive:
             _opf, _base, metadata = _read_epub_package(archive)
             title = next(iter(_epub_metadata_values(metadata, "title")), None)
-            return title[:300] if title else None
+            return title[:MAX_EPUB_TITLE_LENGTH] if title else None
     except ImportError:
         raise
     except Exception:
@@ -604,6 +605,7 @@ def _load_epub(path: Path) -> tuple[str, str, list[Section]]:
             opf, base, metadata = _read_epub_package(archive)
 
             title = next(iter(_epub_metadata_values(metadata, "title")), path.stem)
+            title = title[:MAX_EPUB_TITLE_LENGTH]
             authors = _epub_metadata_values(metadata, "creator")
             author = " · ".join(authors[:20])
             language = next(iter(_epub_metadata_values(metadata, "language")), "")[:100]

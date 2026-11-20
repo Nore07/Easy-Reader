@@ -10,6 +10,28 @@ VERSION = 1
 MAX_BOOKMARKS = 200
 MAX_BOOKMARK_NOTE = 1000
 MAX_BOOK_RECORDS = 500
+MAX_BOOK_TITLE_OVERRIDE = 200
+
+
+def _clean_books(raw):
+    clean = []
+    for book in raw[:MAX_BOOK_RECORDS]:
+        if not isinstance(book, dict) or not all(
+            isinstance(book.get(key), str) for key in ("id", "path", "title")
+        ):
+            continue
+        row = dict(book)
+        override = row.get("title_override")
+        if isinstance(override, str) and len(override) <= MAX_BOOK_TITLE_OVERRIDE:
+            override = " ".join(override.split())
+            if override:
+                row["title_override"] = override
+            else:
+                row.pop("title_override", None)
+        else:
+            row.pop("title_override", None)
+        clean.append(row)
+    return clean
 
 
 def _clean_bookmarks(raw):
@@ -96,7 +118,7 @@ class StateStore:
                     raise ValueError("invalid records")
                 clean = initial_state()
                 clean["settings"] = Settings.from_dict(value.get("settings")).to_dict()
-                clean["books"] = [b for b in books[:MAX_BOOK_RECORDS] if isinstance(b, dict) and all(isinstance(b.get(k), str) for k in ("id", "path", "title"))]
+                clean["books"] = _clean_books(books)
                 clean["positions"] = {k: p for k, p in positions.items() if isinstance(k, str) and isinstance(p, dict) and isinstance(p.get("section_id"), str) and type(p.get("offset")) is int}
                 clean["bookmarks"] = _clean_bookmarks(value.get("bookmarks", {}))
                 clean["last_book"] = value.get("last_book", "") if isinstance(value.get("last_book", ""), str) else ""

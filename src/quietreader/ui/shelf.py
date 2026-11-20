@@ -18,6 +18,7 @@ _BOOK_IDS_MIME_TYPE = "application/x-quietreader-book-ids"
 _BOOK_TITLE_ROLE = Qt.ItemDataRole.UserRole + 1
 _BOOK_DETAIL_ROLE = Qt.ItemDataRole.UserRole + 2
 _BOOK_PROGRESS_ROLE = Qt.ItemDataRole.UserRole + 3
+_CATEGORY_DROP_HOVER_ROLE = Qt.ItemDataRole.UserRole + 4
 
 
 def display_title_for_record(record):
@@ -40,11 +41,22 @@ class BookItemDelegate(QStyledItemDelegate):
         detail = index.data(_BOOK_DETAIL_ROLE) or ""
         progress = index.data(_BOOK_PROGRESS_ROLE) or ""
         painter.save()
-        painter.setClipRect(option.rect)
-        painter.setPen(option.palette.color(QPalette.ColorRole.Text))
+        painter.setClipRect(style_option.rect)
+        if not style_option.state & QStyle.StateFlag.State_Enabled:
+            color_group = QPalette.ColorGroup.Disabled
+        elif style_option.state & QStyle.StateFlag.State_Active:
+            color_group = QPalette.ColorGroup.Active
+        else:
+            color_group = QPalette.ColorGroup.Inactive
+        text_role = (
+            QPalette.ColorRole.HighlightedText
+            if style_option.state & QStyle.StateFlag.State_Selected
+            else QPalette.ColorRole.Text
+        )
+        painter.setPen(style_option.palette.color(color_group, text_role))
 
-        title_font = QFont(option.font)
-        detail_font = QFont(option.font)
+        title_font = QFont(style_option.font)
+        detail_font = QFont(style_option.font)
         if detail_font.pointSize() > 0:
             detail_font.setPointSize(max(8, detail_font.pointSize() - 1))
         elif detail_font.pixelSize() > 0:
@@ -52,7 +64,7 @@ class BookItemDelegate(QStyledItemDelegate):
 
         title_metrics = QFontMetrics(title_font)
         detail_metrics = QFontMetrics(detail_font)
-        content = option.rect.adjusted(12, 5, -12, -5)
+        content = style_option.rect.adjusted(12, 5, -12, -5)
         text_height = title_metrics.height() + detail_metrics.height() + 2
         top = content.top() + max(0, (content.height() - text_height) // 2)
         title_rect = QRect(content.left(), top, content.width(), title_metrics.height())
@@ -118,6 +130,18 @@ class DraggableBookListWidget(QListWidget):
         drag.exec(Qt.DropAction.MoveAction)
 
 
+class CategoryDropItemDelegate(QStyledItemDelegate):
+    def paint(self, painter, option, index):
+        style_option = QStyleOptionViewItem(option)
+        self.initStyleOption(style_option, index)
+        if index.data(_CATEGORY_DROP_HOVER_ROLE):
+            style_option.state |= QStyle.StateFlag.State_Selected
+            style_option.state &= ~QStyle.StateFlag.State_MouseOver
+        widget = style_option.widget
+        style = widget.style() if widget is not None else QApplication.style()
+        style.drawControl(QStyle.ControlElement.CE_ItemViewItem, style_option, painter, widget)
+
+
 class CategoryDropListWidget(QListWidget):
     books_dropped = Signal(list, str)
 
@@ -126,6 +150,36 @@ class CategoryDropListWidget(QListWidget):
         self.setAcceptDrops(True)
         self.setDragDropMode(QAbstractItemView.DragDropMode.DropOnly)
         self.setDropIndicatorShown(True)
+        self.setItemDelegate(CategoryDropItemDelegate(self))
+        self._drop_hover_item = None
+        self._drop_hover_original_role = None
+
+    def clear(self):
+        self._clear_drop_hover()
+        super().clear()
+
+    def _set_drop_hover(self, item):
+        if item is self._drop_hover_item or (
+            item is not None and self._drop_hover_item is not None
+            and self.row(item) == self.row(self._drop_hover_item)
+        ):
+            return
+        self._clear_drop_hover()
+        if item is None:
+            return
+        self._drop_hover_item = item
+        self._drop_hover_original_role = item.data(_CATEGORY_DROP_HOVER_ROLE)
+        item.setData(_CATEGORY_DROP_HOVER_ROLE, True)
+        self.viewport().update()
+
+    def _clear_drop_hover(self):
+        item = self._drop_hover_item
+        if item is None:
+            return
+        item.setData(_CATEGORY_DROP_HOVER_ROLE, self._drop_hover_original_role)
+        self._drop_hover_item = None
+        self._drop_hover_original_role = None
+        self.viewport().update()
 
     @staticmethod
     def _book_ids(mime_data):
@@ -150,21 +204,29 @@ class CategoryDropListWidget(QListWidget):
         return item, book_ids, category
 
     def dragEnterEvent(self, event):
-        if self._drop_target(event) is None:
+        self._clear_drop_hover()
+        if not self._book_ids(event.mimeData()):
             event.ignore()
             return
         event.setDropAction(Qt.DropAction.MoveAction)
         event.accept()
 
     def dragMoveEvent(self, event):
-        if self._drop_target(event) is None:
+        target = self._drop_target(event)
+        self._set_drop_hover(target[0] if target is not None else None)
+        if target is None:
             event.ignore()
             return
         event.setDropAction(Qt.DropAction.MoveAction)
         event.accept()
 
+    def dragLeaveEvent(self, event):
+        self._clear_drop_hover()
+        super().dragLeaveEvent(event)
+
     def dropEvent(self, event):
         target = self._drop_target(event)
+        self._clear_drop_hover()
         if target is None:
             event.ignore()
             return
@@ -440,12 +502,31 @@ class ShelfPanel(QWidget):
         item = widget.itemAt(point)
         if item is None:
             return
+        book_id = item.data(Qt.ItemDataRole.UserRole)
+        if not book_id:
+            return
         menu = QMenu(widget)
         rename_action = menu.addAction(tr("修改显示书名", self.language))
-        if menu.exec(widget.mapToGlobal(point)) == rename_action:
-            book_id = item.data(Qt.ItemDataRole.UserRole)
-            if book_id:
-                self.rename_requested.emit(book_id)
+        menu.addSeparator()
+        move_menu = menu.addMenu(tr("移动到分类", self.language))
+        record = next((row for row in self.records if row.get("id") == book_id), None)
+        current_category = (
+            self._category_for_path(record["path"])
+            if record is not None and hasattr(self, "_category_for_path")
+            else None
+        )
+        move_actions = {}
+        for category in (UNCLASSIFIED, *self.categories):
+            label = tr("未分类", self.language) if category == UNCLASSIFIED else category
+            action = move_menu.addAction(label)
+            action.setEnabled(category != current_category)
+            move_actions[action] = category
+
+        selected_action = menu.exec(widget.mapToGlobal(point))
+        if selected_action == rename_action:
+            self.rename_requested.emit(book_id)
+        elif selected_action in move_actions:
+            self.move_books_requested.emit([book_id], move_actions[selected_action])
 
     def _remove_selected(self, widget):
         item = widget.currentItem()
