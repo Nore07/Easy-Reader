@@ -16,6 +16,7 @@ from quietreader.domain.models import Book, EPUBFormatRange, EPUBLink, Navigatio
 
 MAX_FILE = 32 * 1024 * 1024
 MAX_EXPANDED = 64 * 1024 * 1024
+MAX_EPUB_TITLE_LENGTH = 300
 CHUNK_SIZE = 24000
 MAX_EPUB_ANCHORS = 100000
 MAX_EPUB_LINKS = 50000
@@ -542,45 +543,79 @@ def _parse_epub_xml(payload: bytes):
         return ET.fromstring(rewritten)
 
 
+def _read_epub_package(archive):
+    infos = archive.infolist()
+    if len(infos) > 4096 or sum(item.file_size for item in infos) > MAX_EXPANDED:
+        raise ImportError("EPUB 解压后过大或资源过多，当前版本不支持。")
+    for info in infos:
+        if info.flag_bits & 1 or info.file_size > MAX_FILE or info.file_size > max(1, info.compress_size) * 500:
+            raise ImportError("EPUB 加密或压缩比例异常，无法安全读取。")
+        if ".." in PurePosixPath(info.filename).parts or info.filename.startswith("/") or "\\" in info.filename:
+            raise ImportError("EPUB 含有不安全的资源路径。")
+    names = set(archive.namelist())
+    if len(names) != len(infos):
+        raise ImportError("EPUB 存在重复资源，无法可靠读取。")
+    if "META-INF/encryption.xml" in names:
+        raise ImportError("此 EPUB 包含加密资源（可能是 DRM 或字体混淆），当前版本不支持。")
+    if archive.read("mimetype").strip() != b"application/epub+zip":
+        raise ImportError("这不是有效的 EPUB 文件。")
+    container = ET.fromstring(archive.read("META-INF/container.xml"))
+    rootfile = next(element for element in container.iter() if _tag(element) == "rootfile")
+    opf_path = _zip_path("", rootfile.attrib["full-path"])
+    opf = ET.fromstring(archive.read(opf_path))
+    base = posixpath.dirname(opf_path)
+    metadata = next((element for element in opf.iter() if _tag(element) == "metadata"), opf)
+    return opf, base, metadata
+
+
+def _epub_metadata_values(metadata, name):
+    values = []
+    for node in metadata.iter():
+        if _tag(node) != name:
+            continue
+        value = " ".join(" ".join(node.itertext()).split())
+        if value:
+            values.append(value[:4000])
+    return values
+
+
+def read_epub_title(file: str | Path) -> str | None:
+    """Read only the EPUB package title, without parsing its chapters."""
+    path = Path(file)
+    if path.suffix.lower() != ".epub":
+        return None
+    try:
+        if not path.is_file():
+            raise ImportError("文件不存在或无法访问，请重新定位文件。")
+        if path.stat().st_size > MAX_FILE:
+            raise ImportError("文件超过 32 MiB，当前版本暂不支持。")
+        with zipfile.ZipFile(path) as archive:
+            _opf, _base, metadata = _read_epub_package(archive)
+            title = next(iter(_epub_metadata_values(metadata, "title")), None)
+            return title[:MAX_EPUB_TITLE_LENGTH] if title else None
+    except ImportError:
+        raise
+    except Exception:
+        raise ImportError("EPUB 结构损坏、内容缺失或 XML 不受支持，无法读取。") from None
+
+
 def _load_epub(path: Path) -> tuple[str, str, list[Section]]:
     try:
         with zipfile.ZipFile(path) as archive:
-            infos = archive.infolist()
-            if len(infos) > 4096 or sum(i.file_size for i in infos) > MAX_EXPANDED:
-                raise ImportError("EPUB 解压后过大或资源过多，当前版本不支持。")
-            for info in infos:
-                if info.flag_bits & 1 or info.file_size > MAX_FILE or info.file_size > max(1, info.compress_size) * 500:
-                    raise ImportError("EPUB 加密或压缩比例异常，无法安全读取。")
-                if ".." in PurePosixPath(info.filename).parts or info.filename.startswith("/") or "\\" in info.filename:
-                    raise ImportError("EPUB 含有不安全的资源路径。")
-            names = set(archive.namelist())
-            if len(names) != len(infos):
-                raise ImportError("EPUB 存在重复资源，无法可靠读取。")
-            if "META-INF/encryption.xml" in names:
-                raise ImportError("此 EPUB 包含加密资源（可能是 DRM 或字体混淆），当前版本不支持。")
-            if archive.read("mimetype").strip() != b"application/epub+zip":
-                raise ImportError("这不是有效的 EPUB 文件。")
-            container = ET.fromstring(archive.read("META-INF/container.xml"))
-            rootfile = next(e for e in container.iter() if _tag(e) == "rootfile")
-            opf_path = _zip_path("", rootfile.attrib["full-path"])
-            opf = ET.fromstring(archive.read(opf_path))
-            base = posixpath.dirname(opf_path)
-            metadata = next((e for e in opf.iter() if _tag(e) == "metadata"), opf)
+            opf, base, metadata = _read_epub_package(archive)
 
-            def metadata_values(name):
-                return [" ".join(" ".join(node.itertext()).split())[:4000] for node in metadata.iter() if _tag(node) == name and " ".join(" ".join(node.itertext()).split())]
-
-            title = next(iter(metadata_values("title")), path.stem)
-            authors = metadata_values("creator")
+            title = next(iter(_epub_metadata_values(metadata, "title")), path.stem)
+            title = title[:MAX_EPUB_TITLE_LENGTH]
+            authors = _epub_metadata_values(metadata, "creator")
             author = " · ".join(authors[:20])
-            language = next(iter(metadata_values("language")), "")[:100]
+            language = next(iter(_epub_metadata_values(metadata, "language")), "")[:100]
             identifiers = [node for node in metadata.iter() if _tag(node) == "identifier" and " ".join(" ".join(node.itertext()).split())]
             unique_id = opf.get("unique-identifier", "")
             identifier_node = next((node for node in identifiers if node.get("id") == unique_id), identifiers[0] if identifiers else None)
             identifier = " ".join(" ".join(identifier_node.itertext()).split())[:500] if identifier_node is not None else ""
-            publisher = next(iter(metadata_values("publisher")), "")[:500]
-            publication_date = next(iter(metadata_values("date")), "")[:100]
-            description = next(iter(metadata_values("description")), "")[:4000]
+            publisher = next(iter(_epub_metadata_values(metadata, "publisher")), "")[:500]
+            publication_date = next(iter(_epub_metadata_values(metadata, "date")), "")[:100]
+            description = next(iter(_epub_metadata_values(metadata, "description")), "")[:4000]
             manifest = {e.attrib["id"]: e.attrib for e in opf.iter() if _tag(e) == "item" and "id" in e.attrib}
             cover_id = next((item["id"] for item in manifest.values() if "cover-image" in item.get("properties", "").split()), "")
             if not cover_id:

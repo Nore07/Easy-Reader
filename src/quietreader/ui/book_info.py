@@ -41,7 +41,7 @@ class BookInfoPanel(QWidget):
         outer.addWidget(scroll)
         self.set_book(None)
 
-    def set_book(self, book, language=None):
+    def set_book(self, book, language=None, display_title=None):
         self.book = book
         if language is not None:
             self.language = language
@@ -51,7 +51,7 @@ class BookInfoPanel(QWidget):
         if not book:
             self.details.setText(tr("打开书籍以查看资料。", self.language))
             return
-        rows = [("书名", book.title), ("作者", book.author), ("语言", book.language),
+        rows = [("书名", display_title or book.title), ("作者", book.author), ("语言", book.language),
                 ("出版者", book.publisher), ("出版日期", book.publication_date),
                 ("标识符", book.identifier), ("简介", book.description)]
         text = "\n\n".join(tr(f"{label}：{{value}}", self.language, value=value) for label, value in rows if value)

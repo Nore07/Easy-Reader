@@ -1,20 +1,246 @@
+import json
 from math import isfinite
 from pathlib import Path
 
-from PySide6.QtCore import QSize, Qt, Signal
+from PySide6.QtCore import QMimeData, QRect, QSize, Qt, Signal
+from PySide6.QtGui import QDrag, QFont, QFontMetrics, QPalette
 from PySide6.QtWidgets import (
-    QComboBox, QHBoxLayout, QLabel, QListWidget, QListWidgetItem, QPushButton,
-    QTabWidget, QVBoxLayout, QWidget,
+    QApplication, QAbstractItemView, QHBoxLayout, QLabel, QListWidget,
+    QListWidgetItem, QMenu, QPushButton, QStyle, QStyleOptionViewItem,
+    QStyledItemDelegate, QTabWidget, QVBoxLayout, QWidget,
 )
 
 from quietreader.i18n import tr
 from quietreader.library.shelf import UNCLASSIFIED
 
 
+_BOOK_IDS_MIME_TYPE = "application/x-quietreader-book-ids"
+_BOOK_TITLE_ROLE = Qt.ItemDataRole.UserRole + 1
+_BOOK_DETAIL_ROLE = Qt.ItemDataRole.UserRole + 2
+_BOOK_PROGRESS_ROLE = Qt.ItemDataRole.UserRole + 3
+_CATEGORY_DROP_HOVER_ROLE = Qt.ItemDataRole.UserRole + 4
+
+
+def display_title_for_record(record):
+    override = record.get("title_override")
+    if isinstance(override, str) and override.strip():
+        return override
+    return record.get("title") or Path(record["path"]).stem
+
+
+class BookItemDelegate(QStyledItemDelegate):
+    def paint(self, painter, option, index):
+        style_option = QStyleOptionViewItem(option)
+        self.initStyleOption(style_option, index)
+        style_option.text = ""
+        widget = style_option.widget
+        style = widget.style() if widget is not None else QApplication.style()
+        style.drawControl(QStyle.ControlElement.CE_ItemViewItem, style_option, painter, widget)
+
+        title = index.data(_BOOK_TITLE_ROLE) or ""
+        detail = index.data(_BOOK_DETAIL_ROLE) or ""
+        progress = index.data(_BOOK_PROGRESS_ROLE) or ""
+        painter.save()
+        painter.setClipRect(style_option.rect)
+        if not style_option.state & QStyle.StateFlag.State_Enabled:
+            color_group = QPalette.ColorGroup.Disabled
+        elif style_option.state & QStyle.StateFlag.State_Active:
+            color_group = QPalette.ColorGroup.Active
+        else:
+            color_group = QPalette.ColorGroup.Inactive
+        text_role = (
+            QPalette.ColorRole.HighlightedText
+            if style_option.state & QStyle.StateFlag.State_Selected
+            else QPalette.ColorRole.Text
+        )
+        painter.setPen(style_option.palette.color(color_group, text_role))
+
+        title_font = QFont(style_option.font)
+        detail_font = QFont(style_option.font)
+        if detail_font.pointSize() > 0:
+            detail_font.setPointSize(max(8, detail_font.pointSize() - 1))
+        elif detail_font.pixelSize() > 0:
+            detail_font.setPixelSize(max(10, detail_font.pixelSize() - 1))
+
+        title_metrics = QFontMetrics(title_font)
+        detail_metrics = QFontMetrics(detail_font)
+        content = style_option.rect.adjusted(12, 5, -12, -5)
+        text_height = title_metrics.height() + detail_metrics.height() + 2
+        top = content.top() + max(0, (content.height() - text_height) // 2)
+        title_rect = QRect(content.left(), top, content.width(), title_metrics.height())
+        detail_rect = QRect(
+            content.left(), top + title_metrics.height() + 2,
+            content.width(), detail_metrics.height(),
+        )
+
+        painter.setFont(title_font)
+        visible_title = title_metrics.elidedText(
+            title, Qt.TextElideMode.ElideRight, title_rect.width(),
+        )
+        painter.drawText(
+            title_rect,
+            Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
+            visible_title,
+        )
+
+        painter.setFont(detail_font)
+        if progress:
+            progress_width = detail_metrics.horizontalAdvance(progress)
+            gap = detail_metrics.horizontalAdvance("  ")
+            progress_rect = QRect(
+                detail_rect.right() - progress_width + 1,
+                detail_rect.top(),
+                progress_width,
+                detail_rect.height(),
+            )
+            detail_width = max(0, detail_rect.width() - progress_width - gap)
+            detail_rect.setWidth(detail_width)
+            painter.drawText(
+                detail_rect,
+                Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
+                detail_metrics.elidedText(detail, Qt.TextElideMode.ElideRight, detail_width),
+            )
+            painter.drawText(
+                progress_rect,
+                Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter,
+                progress,
+            )
+        else:
+            painter.drawText(
+                detail_rect,
+                Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
+                detail_metrics.elidedText(detail, Qt.TextElideMode.ElideRight, detail_rect.width()),
+            )
+        painter.restore()
+
+
+class DraggableBookListWidget(QListWidget):
+    def startDrag(self, supported_actions):
+        book_ids = [
+            item.data(Qt.ItemDataRole.UserRole)
+            for item in self.selectedItems()
+            if item.data(Qt.ItemDataRole.UserRole)
+        ]
+        if not book_ids:
+            return
+        mime_data = QMimeData()
+        mime_data.setData(_BOOK_IDS_MIME_TYPE, json.dumps(book_ids).encode("utf-8"))
+        drag = QDrag(self)
+        drag.setMimeData(mime_data)
+        drag.exec(Qt.DropAction.MoveAction)
+
+
+class CategoryDropItemDelegate(QStyledItemDelegate):
+    def paint(self, painter, option, index):
+        style_option = QStyleOptionViewItem(option)
+        self.initStyleOption(style_option, index)
+        if index.data(_CATEGORY_DROP_HOVER_ROLE):
+            style_option.state |= QStyle.StateFlag.State_Selected
+            style_option.state &= ~QStyle.StateFlag.State_MouseOver
+        widget = style_option.widget
+        style = widget.style() if widget is not None else QApplication.style()
+        style.drawControl(QStyle.ControlElement.CE_ItemViewItem, style_option, painter, widget)
+
+
+class CategoryDropListWidget(QListWidget):
+    books_dropped = Signal(list, str)
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setAcceptDrops(True)
+        self.setDragDropMode(QAbstractItemView.DragDropMode.DropOnly)
+        self.setDropIndicatorShown(True)
+        self.setItemDelegate(CategoryDropItemDelegate(self))
+        self._drop_hover_item = None
+        self._drop_hover_original_role = None
+
+    def clear(self):
+        self._clear_drop_hover()
+        super().clear()
+
+    def _set_drop_hover(self, item):
+        if item is self._drop_hover_item or (
+            item is not None and self._drop_hover_item is not None
+            and self.row(item) == self.row(self._drop_hover_item)
+        ):
+            return
+        self._clear_drop_hover()
+        if item is None:
+            return
+        self._drop_hover_item = item
+        self._drop_hover_original_role = item.data(_CATEGORY_DROP_HOVER_ROLE)
+        item.setData(_CATEGORY_DROP_HOVER_ROLE, True)
+        self.viewport().update()
+
+    def _clear_drop_hover(self):
+        item = self._drop_hover_item
+        if item is None:
+            return
+        item.setData(_CATEGORY_DROP_HOVER_ROLE, self._drop_hover_original_role)
+        self._drop_hover_item = None
+        self._drop_hover_original_role = None
+        self.viewport().update()
+
+    @staticmethod
+    def _book_ids(mime_data):
+        if not mime_data.hasFormat(_BOOK_IDS_MIME_TYPE):
+            return []
+        try:
+            values = json.loads(bytes(mime_data.data(_BOOK_IDS_MIME_TYPE)).decode("utf-8"))
+        except (UnicodeDecodeError, json.JSONDecodeError):
+            return []
+        if not isinstance(values, list):
+            return []
+        return list(dict.fromkeys(value for value in values if isinstance(value, str) and value))
+
+    def _drop_target(self, event):
+        book_ids = self._book_ids(event.mimeData())
+        item = self.itemAt(event.position().toPoint())
+        if not book_ids or item is None:
+            return None
+        category = item.data(Qt.ItemDataRole.UserRole)
+        if not isinstance(category, str) or not category:
+            return None
+        return item, book_ids, category
+
+    def dragEnterEvent(self, event):
+        self._clear_drop_hover()
+        if not self._book_ids(event.mimeData()):
+            event.ignore()
+            return
+        event.setDropAction(Qt.DropAction.MoveAction)
+        event.accept()
+
+    def dragMoveEvent(self, event):
+        target = self._drop_target(event)
+        self._set_drop_hover(target[0] if target is not None else None)
+        if target is None:
+            event.ignore()
+            return
+        event.setDropAction(Qt.DropAction.MoveAction)
+        event.accept()
+
+    def dragLeaveEvent(self, event):
+        self._clear_drop_hover()
+        super().dragLeaveEvent(event)
+
+    def dropEvent(self, event):
+        target = self._drop_target(event)
+        self._clear_drop_hover()
+        if target is None:
+            event.ignore()
+            return
+        _item, book_ids, category = target
+        event.setDropAction(Qt.DropAction.MoveAction)
+        event.accept()
+        self.books_dropped.emit(book_ids, category)
+
+
 class ShelfPanel(QWidget):
     add_requested = Signal()
     open_requested = Signal(str)
-    move_requested = Signal(str, str)
+    rename_requested = Signal(str)
+    move_books_requested = Signal(list, str)
     remove_requested = Signal(str)
     create_category_requested = Signal()
     delete_category_requested = Signal(str)
@@ -61,19 +287,12 @@ class ShelfPanel(QWidget):
         all_actions = QHBoxLayout(all_toolbar)
         all_actions.setContentsMargins(0, 0, 0, 0)
         all_actions.setSpacing(8)
-        self.all_target_label = QLabel()
-        self.all_target_label.setObjectName("toolbarLabel")
-        self.all_target = QComboBox()
-        self.all_target.setObjectName("shelfCategoryCombo")
-        self.all_target.setMinimumWidth(150)
-        self.all_move = QPushButton()
-        self.all_move.clicked.connect(lambda: self._move_selected(self.all_books, self.all_target))
+        self.all_rename = QPushButton()
+        self.all_rename.clicked.connect(lambda: self._rename_current(self.all_books))
         self.all_remove = QPushButton()
         self.all_remove.setObjectName("quietAction")
         self.all_remove.clicked.connect(lambda: self._remove_selected(self.all_books))
-        all_actions.addWidget(self.all_target_label)
-        all_actions.addWidget(self.all_target)
-        all_actions.addWidget(self.all_move)
+        all_actions.addWidget(self.all_rename)
         all_actions.addWidget(self.all_remove)
         all_actions.addStretch(1)
         all_layout.addWidget(all_toolbar)
@@ -90,19 +309,12 @@ class ShelfPanel(QWidget):
         category_actions = QHBoxLayout(category_toolbar)
         category_actions.setContentsMargins(0, 0, 0, 0)
         category_actions.setSpacing(8)
-        self.category_target_label = QLabel()
-        self.category_target_label.setObjectName("toolbarLabel")
-        self.category_target = QComboBox()
-        self.category_target.setObjectName("shelfCategoryCombo")
-        self.category_target.setMinimumWidth(150)
-        self.category_move = QPushButton()
-        self.category_move.clicked.connect(lambda: self._move_selected(self.category_books, self.category_target))
+        self.category_rename = QPushButton()
+        self.category_rename.clicked.connect(lambda: self._rename_current(self.category_books))
         self.category_remove = QPushButton()
         self.category_remove.setObjectName("quietAction")
         self.category_remove.clicked.connect(lambda: self._remove_selected(self.category_books))
-        category_actions.addWidget(self.category_target_label)
-        category_actions.addWidget(self.category_target)
-        category_actions.addWidget(self.category_move)
+        category_actions.addWidget(self.category_rename)
         category_actions.addWidget(self.category_remove)
         category_actions.addStretch(1)
         category_layout.addWidget(category_toolbar)
@@ -110,11 +322,19 @@ class ShelfPanel(QWidget):
         category_content = QHBoxLayout()
         category_content.setContentsMargins(0, 0, 0, 0)
         category_content.setSpacing(12)
-        self.category_list = self._book_list("书籍分类", openable=False)
+        self.category_list = self._book_list(
+            "书籍分类", openable=False, widget_type=CategoryDropListWidget,
+        )
+        self.category_list.books_dropped.connect(self.move_books_requested)
         self.category_list.setMinimumWidth(150)
         self.category_list.setMaximumWidth(235)
         self.category_list.currentRowChanged.connect(self._refresh_category_books)
-        self.category_books = self._book_list("分类中的书籍")
+        self.category_books = self._book_list(
+            "分类中的书籍", widget_type=DraggableBookListWidget,
+        )
+        self.category_books.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
+        self.category_books.setDragEnabled(True)
+        self.category_books.setDragDropMode(QAbstractItemView.DragDropMode.DragOnly)
         category_content.addWidget(self.category_list)
         category_content.addWidget(self.category_books, 1)
         category_layout.addLayout(category_content, 1)
@@ -123,13 +343,20 @@ class ShelfPanel(QWidget):
         outer.addWidget(self.tabs, 1)
         self.retranslate("system")
 
-    def _book_list(self, accessible_name, openable=True):
-        widget = QListWidget()
+    def _book_list(self, accessible_name, openable=True, widget_type=QListWidget):
+        widget = widget_type()
         widget.setObjectName("shelfList")
         widget.setAccessibleName(accessible_name)
-        widget.setWordWrap(True)
         if openable:
+            widget.setWordWrap(False)
+            widget.setItemDelegate(BookItemDelegate(widget))
+            widget.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+            widget.customContextMenuRequested.connect(
+                lambda point, target=widget: self._show_book_context_menu(target, point)
+            )
             widget.itemActivated.connect(self._open_item)
+        else:
+            widget.setWordWrap(True)
         return widget
 
     def retranslate(self, language):
@@ -137,26 +364,24 @@ class ShelfPanel(QWidget):
         self.add_button.setText(tr("添加书籍", language))
         self.add_button.setToolTip(tr("添加本地 TXT / EPUB 到书架 · Ctrl+O", language))
         self.add_button.setAccessibleName(tr("添加书籍", language))
-        self.all_target_label.setText(tr("移动到分类", language))
-        self.category_target_label.setText(tr("移动到分类", language))
         for index, source in enumerate(("最近阅读", "所有书籍", "分类")):
             self.tabs.setTabText(index, tr(source, language))
         self.category_create.setText(tr("新建分类", language))
         self.category_delete.setText(tr("删除分类", language))
-        self.all_move.setText(tr("移动", language))
-        self.all_move.setToolTip(tr("移动到分类", language))
-        self.all_move.setAccessibleName(tr("移动到分类", language))
+        self.category_list.setToolTip(tr("将右侧书籍拖到分类上即可快速移动。", language))
+        self.category_books.setToolTip(tr("按住 Ctrl 或 Shift 多选，再拖到左侧分类。", language))
+        self.all_rename.setText(tr("改名", language))
+        self.all_rename.setToolTip(tr("修改显示书名", language))
+        self.all_rename.setAccessibleName(tr("修改显示书名", language))
         self.all_remove.setText(tr("移除", language))
         self.all_remove.setToolTip(tr("从书架移除", language))
         self.all_remove.setAccessibleName(tr("从书架移除", language))
-        self.category_move.setText(tr("移动", language))
-        self.category_move.setToolTip(tr("移动到分类", language))
-        self.category_move.setAccessibleName(tr("移动到分类", language))
+        self.category_rename.setText(tr("改名", language))
+        self.category_rename.setToolTip(tr("修改显示书名", language))
+        self.category_rename.setAccessibleName(tr("修改显示书名", language))
         self.category_remove.setText(tr("移除", language))
         self.category_remove.setToolTip(tr("从书架移除", language))
         self.category_remove.setAccessibleName(tr("从书架移除", language))
-        self.all_target.setToolTip(tr("移动到分类", language))
-        self.category_target.setToolTip(tr("移动到分类", language))
         self._set_accessible_names(language)
         self._refresh_lists()
 
@@ -186,30 +411,30 @@ class ShelfPanel(QWidget):
                 return True
         return False
 
+    def select_category(self, category):
+        self.tabs.setCurrentIndex(2)
+        for row in range(self.category_list.count()):
+            item = self.category_list.item(row)
+            if item.data(Qt.ItemDataRole.UserRole) == category:
+                self.category_list.setCurrentRow(row)
+                self.category_list.scrollToItem(item)
+                return True
+        return False
+
     def _refresh_lists(self):
         if not hasattr(self, "all_books"):
             return
-        target_data = self.all_target.currentData() if self.all_target.count() else None
-        category_target_data = self.category_target.currentData() if self.category_target.count() else None
         category_name = self.category_list.currentItem().data(Qt.ItemDataRole.UserRole) if self.category_list.currentItem() else UNCLASSIFIED
         recent_records = sorted((r for r in self.records if r.get("last_read")), key=lambda r: r.get("last_read", ""), reverse=True)
-        all_records = sorted(self.records, key=lambda r: r.get("title", "").casefold())
+        all_records = sorted(self.records, key=lambda r: display_title_for_record(r).casefold())
         self._fill(self.recent, recent_records[:100])
         self._fill(self.all_books, all_records)
-        self.all_target.clear()
-        self.category_target.clear()
         targets = [UNCLASSIFIED, *self.categories]
-        for combo in (self.all_target, self.category_target):
-            for name in targets:
-                combo.addItem(tr("未分类", self.language) if name == UNCLASSIFIED else name, name)
-        if target_data in targets:
-            self.all_target.setCurrentIndex(self.all_target.findData(target_data))
-        if category_target_data in targets:
-            self.category_target.setCurrentIndex(self.category_target.findData(category_target_data))
         self.category_list.clear()
         for name in targets:
             item = QListWidgetItem(tr("未分类", self.language) if name == UNCLASSIFIED else name)
             item.setData(Qt.ItemDataRole.UserRole, name)
+            item.setFlags(item.flags() | Qt.ItemFlag.ItemIsDropEnabled)
             self.category_list.addItem(item)
         row = next((i for i in range(self.category_list.count()) if self.category_list.item(i).data(Qt.ItemDataRole.UserRole) == category_name), 0)
         self.category_list.setCurrentRow(row)
@@ -218,22 +443,34 @@ class ShelfPanel(QWidget):
     def _fill(self, widget, records):
         widget.clear()
         for record in records:
-            title = record.get("title") or Path(record["path"]).stem
+            title = display_title_for_record(record)
             chapter = record.get("reading_chapter")
             progress = record.get("reading_progress")
-            if isinstance(chapter, str) and chapter.strip() and type(progress) in (int, float) and isfinite(progress):
+            has_progress = type(progress) in (int, float) and isfinite(progress)
+            if has_progress:
                 percentage = f"{max(0, min(1, progress)):.0%}"
-                detail = tr("{chapter} · 全书 {progress}", self.language, chapter=chapter, progress=percentage)
-            elif record.get("_has_saved_position") or record.get("last_read"):
+                progress_label = tr("全书 {progress}", self.language, progress=percentage)
+            else:
+                percentage = "0%"
+                progress_label = ""
+            if isinstance(chapter, str) and chapter.strip():
+                detail = chapter.strip()
+            elif record.get("_has_saved_position") or record.get("last_read") or (has_progress and progress > 0):
                 detail = tr("打开书籍后更新进度", self.language)
             else:
-                detail = tr("尚未开始阅读 · 全书 0%", self.language)
-            item = QListWidgetItem(f"{title}\n{detail}")
+                detail = tr("尚未开始阅读", self.language)
+                if not has_progress:
+                    progress_label = tr("全书 {progress}", self.language, progress=percentage)
+            summary = " · ".join(part for part in (detail, progress_label) if part)
+            item = QListWidgetItem(f"{title}\n{summary}")
             item.setSizeHint(QSize(0, 64))
+            item.setData(_BOOK_TITLE_ROLE, title)
+            item.setData(_BOOK_DETAIL_ROLE, detail)
+            item.setData(_BOOK_PROGRESS_ROLE, progress_label)
             if record.get("author"):
-                item.setToolTip(f"{record['author']}\n{detail}\n{record['path']}")
+                item.setToolTip(f"{record['author']}\n{summary}\n{record['path']}")
             else:
-                item.setToolTip(f"{detail}\n{record['path']}")
+                item.setToolTip(f"{summary}\n{record['path']}")
             item.setData(Qt.ItemDataRole.UserRole, record.get("id", ""))
             widget.addItem(item)
 
@@ -243,7 +480,7 @@ class ShelfPanel(QWidget):
         item = self.category_list.currentItem()
         category = item.data(Qt.ItemDataRole.UserRole) if item else UNCLASSIFIED
         records = [record for record in self.records if self._category_for_path(record["path"]) == category]
-        records.sort(key=lambda r: r.get("title", "").casefold())
+        records.sort(key=lambda r: display_title_for_record(r).casefold())
         self._fill(self.category_books, records)
         self.category_delete.setEnabled(
             self.tabs.currentIndex() == 2 and category != UNCLASSIFIED and category in self.categories
@@ -254,10 +491,42 @@ class ShelfPanel(QWidget):
         if book_id:
             self.open_requested.emit(book_id)
 
-    def _move_selected(self, widget, target):
+    def _rename_current(self, widget):
         item = widget.currentItem()
-        if item is not None and target.currentData():
-            self.move_requested.emit(item.data(Qt.ItemDataRole.UserRole), target.currentData())
+        if item is not None:
+            book_id = item.data(Qt.ItemDataRole.UserRole)
+            if book_id:
+                self.rename_requested.emit(book_id)
+
+    def _show_book_context_menu(self, widget, point):
+        item = widget.itemAt(point)
+        if item is None:
+            return
+        book_id = item.data(Qt.ItemDataRole.UserRole)
+        if not book_id:
+            return
+        menu = QMenu(widget)
+        rename_action = menu.addAction(tr("修改显示书名", self.language))
+        menu.addSeparator()
+        move_menu = menu.addMenu(tr("移动到分类", self.language))
+        record = next((row for row in self.records if row.get("id") == book_id), None)
+        current_category = (
+            self._category_for_path(record["path"])
+            if record is not None and hasattr(self, "_category_for_path")
+            else None
+        )
+        move_actions = {}
+        for category in (UNCLASSIFIED, *self.categories):
+            label = tr("未分类", self.language) if category == UNCLASSIFIED else category
+            action = move_menu.addAction(label)
+            action.setEnabled(category != current_category)
+            move_actions[action] = category
+
+        selected_action = menu.exec(widget.mapToGlobal(point))
+        if selected_action == rename_action:
+            self.rename_requested.emit(book_id)
+        elif selected_action in move_actions:
+            self.move_books_requested.emit([book_id], move_actions[selected_action])
 
     def _remove_selected(self, widget):
         item = widget.currentItem()
