@@ -23,6 +23,7 @@ from quietreader.ui.covers import render_cover_pixmap
 from quietreader.ui.icons import render_icon_pixmap, vector_icon
 from quietreader.ui.reader import PageView
 from quietreader.ui.settings import SettingsDialog
+from quietreader.ui.settings_page import SettingsPage
 from quietreader.ui.theme import colors, stylesheet
 from quietreader.ui.tokens import (
     COMPACT_BRAND_BREAKPOINT, CRUMB_MIN_WIDTH, NARROW_BREAKPOINT, TOPBAR_HEIGHT,
@@ -279,6 +280,7 @@ class MainWindow(QMainWindow):
         self._user_sidebar_collapsed = False
         self._was_narrow = False
         self._shelf_actions_in_narrow = False
+        self._pre_settings_page = None
         self._themed_controls = []
         self._focus_opacity_override = None
         self._focus_adjust_active = False
@@ -373,6 +375,25 @@ class MainWindow(QMainWindow):
         self.brand_mark.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
         top.addWidget(self.brand_mark)
 
+        self.settings_back_button = QPushButton("返回阅读")
+        self.settings_back_button.setObjectName("backPill")
+        self.settings_back_button.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self.settings_back_button.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.settings_back_button.clicked.connect(self.close_settings)
+        self.settings_back_button.hide()
+        top.addWidget(self.settings_back_button)
+
+        self.settings_top_sep = QFrame()
+        self.settings_top_sep.setObjectName("toolbarSep")
+        self.settings_top_sep.setFixedSize(1, 16)
+        self.settings_top_sep.hide()
+        top.addWidget(self.settings_top_sep)
+
+        self.settings_top_title = self._label("阅读器配置", "settingsTopTitle")
+        self.settings_top_title.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
+        self.settings_top_title.hide()
+        top.addWidget(self.settings_top_title)
+
         brand = self.brand = self._label("静读", "brand")
         brand.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
         top.addWidget(brand)
@@ -449,7 +470,7 @@ class MainWindow(QMainWindow):
         self.focus_button = self._icon_button("focus", self.toggle_focus, "专注", size=15, checkable=True)
         self.topbar_actions_layout.addWidget(self.focus_button)
 
-        self.config_button = self._icon_button("settings", self.show_settings, "配置", size=15)
+        self.config_button = self._icon_button("settings", self.toggle_settings, "配置", size=15, checkable=True)
         self.topbar_actions_layout.addWidget(self.config_button)
 
         self.topbar_sep = QFrame()
@@ -663,6 +684,13 @@ class MainWindow(QMainWindow):
         self.shelf.create_category_requested.connect(self.prompt_create_shelf_category)
         self.shelf.delete_category_requested.connect(self._confirm_delete_shelf_category)
         self.main_pages.addWidget(self.shelf)
+        self.settings_page = SettingsPage(self.store, self)
+        self.settings_page.settings_changed.connect(self.apply_settings)
+        self.settings_page.capture_started.connect(lambda: self._configure_hotkeys(False))
+        self.settings_page.capture_finished.connect(lambda: self._configure_hotkeys())
+        self.settings_page.notice_requested.connect(self.set_status)
+        self.settings_page.close_requested.connect(self.close_settings)
+        self.main_pages.addWidget(self.settings_page)
         self.recent = self.shelf.recent
         body.addWidget(self.main_pages, 1)
         self._sync_page_navigation()
@@ -700,7 +728,7 @@ class MainWindow(QMainWindow):
         self.focus_opacity_shortcut.activated.connect(self.toggle_focus_opacity)
         self.focus_opacity_shortcut.setAutoRepeat(False)
         self.escape_shortcut = QShortcut(QKeySequence("Esc"), self)
-        self.escape_shortcut.activated.connect(lambda: self.toggle_focus() if self.focus_mode else None)
+        self.escape_shortcut.activated.connect(self._handle_escape)
         self.escape_shortcut.setEnabled(False)
         self.visibility_shortcut = QShortcut(QKeySequence(self.settings.hotkey), self)
         self.visibility_shortcut.setAutoRepeat(False)
@@ -1619,14 +1647,14 @@ class MainWindow(QMainWindow):
         self.header_crumb.setText(metrics.elidedText(full, Qt.TextElideMode.ElideRight, available))
         self.header_crumb.setToolTip(full)
 
-    def _sync_shelf_actions_placement(self, reading_active, is_narrow):
+    def _sync_shelf_actions_placement(self, shelf_active, is_narrow):
         if not hasattr(self, "shelf_actions") or not hasattr(self, "shelf_narrow_bar"):
             return
         # With category actions moved into the left shelf rail, shelf_actions only
         # holds "+ Add books". It fits inside the single-row 44px topbar down to
         # 380px in Chinese, and overflows cleanly below 405px in English.
         min_single_row = 405 if resolve_language(self.settings.language) == "en" else 360
-        want_narrow = (not reading_active) and (not self.focus_mode) and self.width() < min_single_row
+        want_narrow = shelf_active and (not self.focus_mode) and self.width() < min_single_row
         if want_narrow and not self._shelf_actions_in_narrow:
             self.topbar_actions_layout.removeWidget(self.shelf_actions)
             self.shelf_narrow_layout.addWidget(self.shelf_actions)
@@ -1638,12 +1666,15 @@ class MainWindow(QMainWindow):
             self.topbar_actions_layout.insertWidget(0, self.shelf_actions)
             self._shelf_actions_in_narrow = False
         self.shelf_narrow_bar.setVisible(want_narrow)
-        self.shelf_actions.setVisible(not reading_active and not self.focus_mode)
+        self.shelf_actions.setVisible(shelf_active and not self.focus_mode)
 
     def _sync_page_navigation(self):
         if not hasattr(self, "main_pages"):
             return
-        reading_active = self.main_pages.currentWidget() is self.reader_page
+        current = self.main_pages.currentWidget()
+        reading_active = current is self.reader_page
+        shelf_active = current is self.shelf
+        settings_active = hasattr(self, "settings_page") and current is self.settings_page
         is_narrow = self.width() < NARROW_BREAKPOINT
         if is_narrow != self._was_narrow:
             self._was_narrow = is_narrow
@@ -1653,13 +1684,26 @@ class MainWindow(QMainWindow):
                 self.sidebar_collapsed = self._user_sidebar_collapsed
             self._sync_sidebar_toggle_visual()
 
+        if hasattr(self, "settings_back_button"):
+            back_source = "返回书架" if self._pre_settings_page is self.shelf else "返回阅读"
+            self.settings_back_button.setText(self.t(back_source))
+            self.settings_back_button.setVisible(settings_active and not self.focus_mode)
+        if hasattr(self, "settings_top_sep"):
+            self.settings_top_sep.setVisible(settings_active and not self.focus_mode)
+        if hasattr(self, "settings_top_title"):
+            self.settings_top_title.setVisible(settings_active and not self.focus_mode)
+        if hasattr(self, "config_button"):
+            self.config_button.setChecked(settings_active)
+
         if hasattr(self, "page_navigation"):
-            self.page_navigation.set_current("reading" if reading_active else "shelf", emit=False)
+            self.page_navigation.setVisible(not settings_active and not self.focus_mode)
+            if not settings_active:
+                self.page_navigation.set_current("reading" if reading_active else "shelf", emit=False)
         if hasattr(self, "brand"):
-            self.brand.setVisible(not self.focus_mode and self.width() >= COMPACT_BRAND_BREAKPOINT)
+            self.brand.setVisible(not settings_active and not self.focus_mode and self.width() >= COMPACT_BRAND_BREAKPOINT)
         if hasattr(self, "brand_mark"):
-            self.brand_mark.setVisible(not self.focus_mode and self.width() >= COMPACT_BRAND_BREAKPOINT)
-        self._sync_shelf_actions_placement(reading_active, is_narrow)
+            self.brand_mark.setVisible(not settings_active and not self.focus_mode and self.width() >= COMPACT_BRAND_BREAKPOINT)
+        self._sync_shelf_actions_placement(shelf_active, is_narrow)
         if hasattr(self, "layout_button"):
             self.layout_button.setVisible(reading_active and not self.focus_mode)
         if hasattr(self, "pin_button"):
@@ -1677,6 +1721,8 @@ class MainWindow(QMainWindow):
             self.sidebar.setVisible(reading_active and not self.focus_mode and not self.sidebar_collapsed)
         if hasattr(self, "sidebar_toggle"):
             self.sidebar_toggle.setVisible(reading_active and not self.focus_mode)
+        if hasattr(self, "escape_shortcut"):
+            self.escape_shortcut.setEnabled(self.focus_mode or settings_active)
         self._update_header_crumb()
 
     def _sync_sidebar_toggle_visual(self):
@@ -1908,6 +1954,11 @@ class MainWindow(QMainWindow):
             self.setWindowTitle("QuietReader")
         if hasattr(self, "appearance_popover"):
             self.appearance_popover.sync_settings(self.settings, colors(self.settings.theme))
+        if hasattr(self, "settings_page"):
+            self.settings_page.retranslate(self.settings.language)
+        if hasattr(self, "settings_back_button"):
+            back_source = "返回书架" if self._pre_settings_page is self.shelf else "返回阅读"
+            self.settings_back_button.setText(self.t(back_source))
         self.set_status(self.status_source[0], notify=False, **self.status_source[1])
         if hasattr(self, "toast") and not self.toast.isHidden():
             toast_state = self._toast_status_source
@@ -1945,10 +1996,15 @@ class MainWindow(QMainWindow):
         if hasattr(self, "brand_mark"):
             mark_color = palette["ink"] if palette.get("custom_background") else palette["accent"]
             self.brand_mark.setPixmap(render_icon_pixmap("book", mark_color, 15))
+        if hasattr(self, "settings_back_button"):
+            self.settings_back_button.setIcon(vector_icon("back", palette.get("ink_secondary", palette["muted"]), 13))
         for control in self._themed_controls:
             control.apply_palette(palette)
+        ui_palette = colors(self.settings.theme)
         if hasattr(self, "appearance_popover"):
-            self.appearance_popover.sync_settings(self.settings, palette)
+            self.appearance_popover.sync_settings(self.settings, ui_palette)
+        if hasattr(self, "settings_page"):
+            self.settings_page.sync_settings(self.settings, ui_palette)
 
     def apply_settings(self, settings):
         self.settings = Settings.from_dict(settings.to_dict())
@@ -1973,7 +2029,9 @@ class MainWindow(QMainWindow):
         self.focus_opacity_shortcut.setKey(QKeySequence(settings.focus_opacity_key))
         self.visibility_shortcut.setKey(QKeySequence(settings.hotkey))
         self.emergency_shortcut.setKey(QKeySequence(settings.emergency_key))
-        self.escape_shortcut.setEnabled(self.focus_mode)
+        self.escape_shortcut.setEnabled(
+            self.focus_mode or (hasattr(self, "settings_page") and self.main_pages.currentWidget() is self.settings_page)
+        )
         self.root_layout.setContentsMargins(*((0, 0, 0, 0) if self.focus_mode else (12, 6, 12, 6)))
         self.root_layout.setSpacing(0 if self.focus_mode else 8)
         self.body_layout.setSpacing(0 if self.focus_mode else 16)
@@ -1982,7 +2040,10 @@ class MainWindow(QMainWindow):
         if was_visible:
             self.show()
             self.activateWindow()
-            self.reader.setFocus()
+            on_reader = self.main_pages.currentWidget() is self.reader_page
+            popover_open = hasattr(self, "appearance_popover") and not self.appearance_popover.isHidden()
+            if on_reader and not popover_open:
+                self.reader.setFocus()
         set_window_border_hidden(self, self.focus_mode)
         self._configure_hotkeys()
         if self.focus_mode:
@@ -2034,16 +2095,49 @@ class MainWindow(QMainWindow):
             if self.focus_mode:
                 self.hotkey_notice.hide()
 
+    def _handle_escape(self):
+        if self.focus_mode:
+            self.toggle_focus()
+        elif hasattr(self, "settings_page") and self.main_pages.currentWidget() is self.settings_page:
+            self.close_settings()
+
+    def toggle_settings(self, checked=False):
+        if hasattr(self, "settings_page") and self.main_pages.currentWidget() is self.settings_page:
+            self.close_settings()
+        else:
+            self.show_settings()
+
     def show_settings(self):
         if self.focus_mode:
             self.toggle_focus()
-        self.reveal()
+        if self.isHidden() or self.isMinimized():
+            self.reveal()
+        if hasattr(self, "appearance_popover"):
+            self.appearance_popover.dismiss()
+        if hasattr(self, "settings_page"):
+            current = self.main_pages.currentWidget()
+            if current is not self.settings_page:
+                self._pre_settings_page = current
+            self.settings_page.sync_settings(self.settings, colors(self.settings.theme))
+            self.main_pages.setCurrentWidget(self.settings_page)
+            self._sync_page_navigation()
+            return
         dialog = SettingsDialog(self.settings, self)
         dialog.capture_started.connect(lambda: self._configure_hotkeys(False))
         dialog.capture_finished.connect(lambda: self._configure_hotkeys())
         dialog.layout_requested.connect(self.show_layout_panel)
         if dialog.exec() == QDialog.DialogCode.Accepted:
             self.apply_settings(dialog.values())
+
+    def close_settings(self):
+        if hasattr(self, "settings_page"):
+            self.settings_page.cancel_active_capture()
+        target = self._pre_settings_page
+        self._pre_settings_page = None
+        if target is self.shelf:
+            self.show_shelf_page()
+        else:
+            self.show_reading_page()
 
     def create_layout_panel(self):
         if self.focus_mode:
@@ -2155,6 +2249,8 @@ class MainWindow(QMainWindow):
             self.toast.dismiss()
         if hasattr(self, "appearance_popover"):
             self.appearance_popover.dismiss()
+        if hasattr(self, "settings_page"):
+            self.settings_page.cancel_active_capture()
         super().hideEvent(event)
 
     def changeEvent(self, event):
@@ -2388,6 +2484,8 @@ class MainWindow(QMainWindow):
             self.toast.dismiss()
         if hasattr(self, "appearance_popover"):
             self.appearance_popover.dismiss()
+        if hasattr(self, "settings_page"):
+            self.settings_page.cancel_active_capture()
         self.closed = True
         self.pool.waitForDone()
         if self.hotkey:

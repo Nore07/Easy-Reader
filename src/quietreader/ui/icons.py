@@ -158,6 +158,25 @@ def _draw_icon(painter: QPainter, name: str):
         for dx in (0.0, 5.2):
             painter.drawLine(QPointF(7.3 + dx, 7), QPointF(12.3 + dx, 12))
             painter.drawLine(QPointF(12.3 + dx, 12), QPointF(7.3 + dx, 17))
+    elif name == "palette":
+        painter.drawEllipse(QRectF(4, 4, 16, 16))
+        for cx, cy in ((9.2, 9.5), (14.5, 9.2), (9.5, 14.8)):
+            painter.drawEllipse(QRectF(cx - 1.1, cy - 1.1, 2.2, 2.2))
+    elif name == "typography":
+        painter.drawLine(QPointF(5.5, 6.5), QPointF(18.5, 6.5))
+        painter.drawLine(QPointF(12, 6.5), QPointF(12, 18.5))
+        painter.drawLine(QPointF(9, 18.5), QPointF(15, 18.5))
+    elif name == "keyboard":
+        painter.drawRoundedRect(QRectF(3.5, 6.5, 17, 11), 2.2, 2.2)
+        for x in (7, 10.5, 14, 17):
+            painter.drawPoint(QPointF(x, 10.2))
+        painter.drawLine(QPointF(8.2, 14.2), QPointF(15.8, 14.2))
+    elif name == "storage":
+        painter.drawEllipse(QRectF(5, 4.5, 14, 4.5))
+        painter.drawLine(QPointF(5, 6.8), QPointF(5, 17.2))
+        painter.drawLine(QPointF(19, 6.8), QPointF(19, 17.2))
+        painter.drawArc(QRectF(5, 10, 14, 4.5), 180 * 16, 180 * 16)
+        painter.drawArc(QRectF(5, 15, 14, 4.5), 180 * 16, 180 * 16)
 
 
 @lru_cache(maxsize=256)

@@ -447,4 +447,111 @@ def stylesheet(palette, alpha=255, borderless=False, resize_outline=False, drop_
     QLabel#toastLabel {{ color: {c['ink']}; background: transparent; font-size: 12.5px; font-weight: 500; }}
     QPushButton#toastAction {{ color: {c['accent']}; background: {accent_soft}; border: 1px solid {c['accent']}; border-radius: 6px; padding: 3px 10px; min-height: 20px; font-weight: 500; }}
     QPushButton#toastAction:hover {{ background: {c['selected']}; }}
+
+    /* Phase 4: In-page two-column settings page */
+    QPushButton#backPill {{
+        color: {ink_secondary};
+        background: {c['side']};
+        border: 1px solid {c['line']};
+        border-radius: 7px;
+        padding: 3px 10px;
+        min-height: 20px;
+        font-size: 12px;
+        font-weight: 500;
+    }}
+    QPushButton#backPill:hover {{
+        color: {c['ink']};
+        background: {accent_hover};
+        border-color: {line_strong};
+    }}
+    QLabel#settingsTopTitle {{
+        font-size: 13.5px;
+        font-weight: 600;
+        color: {c['ink']};
+        padding-left: 2px;
+    }}
+    QFrame#settingsRail {{
+        background: {c['side']};
+        border: 1px solid {c['line']};
+        border-radius: {RADIUS_CARD}px;
+    }}
+    QLabel#settingsRailFoot {{
+        font-size: 11.5px;
+        font-weight: 600;
+        color: {ink_secondary};
+    }}
+    QLabel#settingsRailSub {{
+        font-size: 10.5px;
+        color: {c['muted']};
+    }}
+    QScrollArea#settingsScroll, QWidget#settingsViewport {{
+        background: transparent;
+        border: none;
+    }}
+    QLabel#settingsPageTitle {{
+        font-size: 17px;
+        font-weight: 600;
+        color: {c['ink']};
+    }}
+    QLabel#settingsPageDesc {{
+        font-size: 12px;
+        color: {c['muted']};
+    }}
+    QFrame#settingsCard {{
+        background: {elevated};
+        border: 1px solid {c['line']};
+        border-radius: 12px;
+    }}
+    QFrame#settingsDivider {{
+        background: {c['line']};
+        border: none;
+    }}
+    QLabel#settingsRowTitle {{
+        font-size: 13px;
+        font-weight: 600;
+        color: {c['ink']};
+    }}
+    QLabel#settingsRowSub {{
+        font-size: 11.5px;
+        color: {c['muted']};
+    }}
+    QLabel#settingsMonoValue {{
+        font-size: 11.5px;
+        color: {ink_secondary};
+        font-family: 'Cascadia Mono', 'Consolas', monospace;
+    }}
+    QPushButton#settingsBtn {{
+        color: {ink_secondary};
+        background: {c['side']};
+        border: 1px solid {c['line']};
+        border-radius: 7px;
+        padding: 4px 10px;
+        min-height: 20px;
+        font-size: 12px;
+    }}
+    QPushButton#settingsBtn:hover {{
+        color: {c['ink']};
+        background: {accent_hover};
+        border-color: {line_strong};
+    }}
+    QPushButton#settingsKeyBtn {{
+        color: {c['ink']};
+        background: {c['side']};
+        border: 1px solid {c['line']};
+        border-radius: 7px;
+        padding: 4px 12px;
+        min-height: 20px;
+        min-width: 110px;
+        font-size: 12px;
+        font-weight: 500;
+    }}
+    QPushButton#settingsKeyBtn:hover {{
+        background: {accent_hover};
+        border-color: {c['accent']};
+    }}
+    QFrame#settingsFooter {{
+        background: transparent;
+        border: none;
+        border-top: 1px solid {c['line']};
+    }}
     """
