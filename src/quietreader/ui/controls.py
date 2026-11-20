@@ -3,10 +3,10 @@
 from PySide6.QtCore import QEvent, QPoint, QRectF, QSize, Qt, Signal
 from PySide6.QtGui import QColor, QPainter, QPen
 from PySide6.QtWidgets import (
-    QAbstractButton, QApplication, QFrame, QHBoxLayout, QPushButton, QSlider,
+    QAbstractButton, QApplication, QComboBox, QFrame, QHBoxLayout, QPushButton, QSlider,
 )
 
-from quietreader.ui.icons import vector_icon
+from quietreader.ui.icons import render_icon_pixmap, vector_icon
 
 
 class ThinSlider(QSlider):
@@ -378,3 +378,23 @@ class FloatingPopover(QFrame):
     def closeEvent(self, event):
         self._remove_filter()
         super().closeEvent(event)
+
+
+class QuietComboBox(QComboBox):
+    """QComboBox painting a crisp vector chevron_down arrow instead of Qt's CSS border dash."""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._chevron_color = "#647569"
+
+    def apply_palette(self, palette: dict[str, str]):
+        self._chevron_color = palette.get("muted", "#647569")
+        self.update()
+
+    def paintEvent(self, event):
+        super().paintEvent(event)
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+        pm = render_icon_pixmap("chevron_down", self._chevron_color, 12)
+        painter.drawPixmap(self.width() - 19, (self.height() - 12) // 2, pm)
+        painter.end()

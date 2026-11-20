@@ -279,17 +279,94 @@ def stylesheet(palette, alpha=255, borderless=False, resize_outline=False, drop_
     QListWidget::item:selected {{ background: {c['selected']}; color: {c['ink']}; }}
     QListWidget::item:hover {{ background: {accent_hover}; }}
     QListWidget#shelfList {{
-        background: {elevated};
-        border: 1px solid {c['line']};
-        border-radius: {RADIUS_CARD}px;
-        padding: 6px;
+        background: transparent;
+        border: none;
+        padding: 2px;
         selection-background-color: {c['selected']};
         selection-color: {c['ink']};
     }}
     QListWidget#shelfList::item {{
-        padding: 12px 12px;
-        border-bottom: 1px solid {c['line']};
-        border-radius: 6px;
+        padding: 0;
+        border: none;
+        background: transparent;
+    }}
+    QListWidget#shelfList::item:selected, QListWidget#shelfList::item:hover {{
+        background: transparent;
+    }}
+
+    /* Phase 3: Two-pane bookshelf rail & toolbar */
+    QFrame#shelfRail {{
+        background: {c['side']};
+        border: 1px solid {c['line']};
+        border-radius: {RADIUS_CARD}px;
+    }}
+    QLabel#railSectionLabel {{
+        font-size: 11px;
+        font-weight: 600;
+        color: {c['muted']};
+        letter-spacing: 0.6px;
+    }}
+    QPushButton#railDeleteBtn {{
+        color: {c['muted']};
+        background: transparent;
+        border: 1px solid transparent;
+        border-radius: 5px;
+        padding: 0 6px;
+        min-height: 0;
+        font-size: 11px;
+    }}
+    QPushButton#railDeleteBtn:hover {{
+        color: {danger};
+        background: {accent_hover};
+        border-color: {c['line']};
+    }}
+    QListWidget#shelfCategoryList {{
+        background: transparent;
+        border: none;
+        outline: 0;
+        padding: 0;
+        selection-background-color: {accent_soft};
+        selection-color: {c['ink']};
+    }}
+    QListWidget#shelfCategoryList::item {{
+        padding: 0;
+        margin: 1px 0;
+        border-radius: 7px;
+    }}
+    QListWidget#shelfCategoryList::item:selected {{
+        background: {accent_soft};
+        color: {c['ink']};
+    }}
+    QListWidget#shelfCategoryList::item:hover {{
+        background: {accent_hover};
+    }}
+    QLineEdit#shelfSearch {{
+        background: {elevated};
+        border: 1px solid {c['line']};
+        border-radius: 8px;
+        padding: 4px 10px;
+        min-height: 22px;
+        font-size: 12.5px;
+    }}
+    QLineEdit#shelfSearch:hover {{ border-color: {line_strong}; }}
+    QLineEdit#shelfSearch:focus {{ border-color: {c['accent']}; }}
+    QComboBox#shelfSortCombo {{
+        background: {c['side']};
+        border: 1px solid {c['line']};
+        border-radius: 8px;
+        padding: 3px 26px 3px 10px;
+        min-height: 22px;
+        font-size: 12px;
+        color: {ink_secondary};
+    }}
+    QComboBox#shelfSortCombo:hover {{ background: {accent_hover}; border-color: {line_strong}; color: {c['ink']}; }}
+    QComboBox#shelfSortCombo:focus {{ border-color: {c['accent']}; }}
+    QComboBox#shelfSortCombo::drop-down {{ subcontrol-origin: padding; subcontrol-position: top right; width: 22px; border: none; }}
+    QComboBox#shelfSortCombo::down-arrow {{ image: none; width: 0; height: 0; border: none; }}
+    QFrame#viewToggleBox {{
+        background: {c['side']};
+        border: 1px solid {c['line']};
+        border-radius: 8px;
     }}
 
     /* Tabs */

@@ -27,7 +27,7 @@ from quietreader.ui.theme import colors, stylesheet
 from quietreader.ui.tokens import (
     COMPACT_BRAND_BREAKPOINT, CRUMB_MIN_WIDTH, NARROW_BREAKPOINT, TOPBAR_HEIGHT,
 )
-from quietreader.i18n import tr, install_qt_translator
+from quietreader.i18n import tr, install_qt_translator, resolve_language
 from quietreader.ui.layout_panel import LayoutPanel
 from quietreader.ui.book_info import BookInfoPanel
 from quietreader.ui.file_dialog import BookFileDialog, default_book_directory
@@ -412,12 +412,14 @@ class MainWindow(QMainWindow):
         top.addWidget(self.header_crumb, 1)
 
         self.topbar_actions = QWidget()
+        self.topbar_actions.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Preferred)
         self.topbar_actions_layout = QHBoxLayout(self.topbar_actions)
         self.topbar_actions_layout.setContentsMargins(0, 0, 0, 0)
         self.topbar_actions_layout.setSpacing(3)
 
         self.shelf_actions = QWidget()
         self.shelf_actions.setObjectName("shelfActions")
+        self.shelf_actions.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Preferred)
         self.shelf_actions_layout = QHBoxLayout(self.shelf_actions)
         self.shelf_actions_layout.setContentsMargins(0, 0, 0, 0)
         self.shelf_actions_layout.setSpacing(6)
@@ -650,9 +652,9 @@ class MainWindow(QMainWindow):
         reading.addWidget(self.reader_navigation)
         self.main_pages.addWidget(self.reader_page)
         self.shelf = ShelfPanel()
+        self._themed_controls.append(self.shelf)
         self.open_button = self.shelf.add_button
-        for button in (self.shelf.add_button, self.shelf.category_create, self.shelf.category_delete):
-            self.shelf_actions_layout.addWidget(button)
+        self.shelf_actions_layout.addWidget(self.shelf.add_button)
         self.shelf.add_requested.connect(self.choose_file)
         self.shelf.open_requested.connect(self.open_shelf_book)
         self.shelf.rename_requested.connect(self.prompt_rename_shelf_book)
@@ -1620,7 +1622,11 @@ class MainWindow(QMainWindow):
     def _sync_shelf_actions_placement(self, reading_active, is_narrow):
         if not hasattr(self, "shelf_actions") or not hasattr(self, "shelf_narrow_bar"):
             return
-        want_narrow = (not reading_active) and (not self.focus_mode) and is_narrow
+        # With category actions moved into the left shelf rail, shelf_actions only
+        # holds "+ Add books". It fits inside the single-row 44px topbar down to
+        # 380px in Chinese, and overflows cleanly below 405px in English.
+        min_single_row = 405 if resolve_language(self.settings.language) == "en" else 360
+        want_narrow = (not reading_active) and (not self.focus_mode) and self.width() < min_single_row
         if want_narrow and not self._shelf_actions_in_narrow:
             self.topbar_actions_layout.removeWidget(self.shelf_actions)
             self.shelf_narrow_layout.addWidget(self.shelf_actions)
