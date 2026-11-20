@@ -12,7 +12,7 @@ from PySide6.QtWidgets import (
     QSizeGrip, QProgressBar, QSlider, QSystemTrayIcon, QTabWidget, QVBoxLayout, QWidget,
 )
 
-from quietreader.content.local import ENCODINGS, ImportError as BookImportError, load_book
+from quietreader.content.local import ENCODINGS, ImportError as BookImportError, load_book, read_epub_title
 from quietreader.desktop.geometry import visible_bounds
 from quietreader.desktop.hotkey import GlobalHotkey
 from quietreader.desktop.window_effects import set_window_border_hidden
@@ -559,6 +559,18 @@ class MainWindow(QMainWindow):
         if files:
             self.add_book_paths(files)
 
+    @staticmethod
+    def _embedded_book_title(path):
+        if Path(path).suffix.lower() != ".epub":
+            return None
+        try:
+            return read_epub_title(path)
+        except BookImportError:
+            return None
+
+    def _import_book_title(self, path):
+        return self._embedded_book_title(path) or Path(path).stem
+
     def add_book_paths(self, paths, open_after=False, skipped_count=0):
         if self.loading or self.store.read_only:
             if self.store.read_only:
@@ -578,12 +590,16 @@ class MainWindow(QMainWindow):
                     if str(record.get("source_path", "")).casefold() == source_key
                 ), None)
                 if existing and self.shelf_manager.is_managed(existing["path"]):
+                    embedded_title = self._embedded_book_title(existing["path"])
+                    if embedded_title:
+                        existing["title"] = embedded_title
                     added.append(existing)
                     continue
                 if existing:
                     managed_path = self.shelf_manager.add_book(source_path)
                     self._remap_shelf_book(existing, managed_path)
                     existing["source_path"] = str(source_path)
+                    existing["title"] = self._import_book_title(managed_path)
                     added.append(existing)
                     new_count += 1
                     continue
@@ -592,12 +608,16 @@ class MainWindow(QMainWindow):
                     if str(Path(record["path"]).expanduser().resolve()).casefold() == source_key
                 ), None)
                 if existing and self.shelf_manager.is_managed(existing["path"]):
+                    embedded_title = self._embedded_book_title(existing["path"])
+                    if embedded_title:
+                        existing["title"] = embedded_title
                     added.append(existing)
                     continue
                 managed_path = self.shelf_manager.add_book(source_path)
                 if existing:
                     self._remap_shelf_book(existing, managed_path)
                     existing["source_path"] = str(source_path)
+                    existing["title"] = self._import_book_title(managed_path)
                     added.append(existing)
                     new_count += 1
                     continue
@@ -605,7 +625,7 @@ class MainWindow(QMainWindow):
                 record = {
                     "id": book_id,
                     "path": str(managed_path),
-                    "title": managed_path.stem,
+                    "title": self._import_book_title(managed_path),
                     "author": "",
                     "encoding": "EPUB" if managed_path.suffix.lower() == ".epub" else "auto",
                     "last_read": "",
