@@ -25,8 +25,39 @@ from quietreader.ui.layout_panel import LayoutPanel
 from quietreader.ui.book_info import BookInfoPanel
 from quietreader.ui.file_dialog import BookFileDialog, default_book_directory
 from quietreader.persistence.store import MAX_BOOKMARKS, MAX_BOOKMARK_NOTE, MAX_BOOK_RECORDS
-from quietreader.library.shelf import ShelfError, ShelfManager, UNCLASSIFIED, book_id_for_path
+from quietreader.library.shelf import SUPPORTED_SUFFIXES, ShelfError, ShelfManager, UNCLASSIFIED, book_id_for_path
 from quietreader.ui.shelf import ShelfPanel
+
+
+def classify_dropped_urls(urls, max_items=MAX_BOOK_RECORDS):
+    """Split dropped URLs into valid local book paths and skipped unsupported entries."""
+    valid_paths = []
+    seen = set()
+    skipped = max(0, len(urls) - max_items)
+    has_local_file = False
+    for url in urls[:max_items]:
+        if not url.isLocalFile() or url.host():
+            skipped += 1
+            continue
+        local_file = url.toLocalFile()
+        if not local_file or local_file.startswith("\\\\"):
+            skipped += 1
+            continue
+        has_local_file = True
+        try:
+            resolved = Path(local_file).resolve(strict=True)
+        except (OSError, RuntimeError):
+            skipped += 1
+            continue
+        if not resolved.is_file() or resolved.suffix.lower() not in SUPPORTED_SUFFIXES:
+            skipped += 1
+            continue
+        key = str(resolved).casefold()
+        if key in seen:
+            continue
+        seen.add(key)
+        valid_paths.append(resolved)
+    return valid_paths, skipped, has_local_file
 
 
 def book_icon():
@@ -157,6 +188,8 @@ class MainWindow(QMainWindow):
         self._focus_adjust_drag = None
         self._focus_system_drag_active = False
         self._focus_cursor_override = False
+        self._drag_hover_active = False
+        self._drag_has_valid = False
         self._chrome_visibility = {}
         self.status_source = ("离线优先。添加书籍即可开始阅读。", {})
         self.tray = None
@@ -168,6 +201,7 @@ class MainWindow(QMainWindow):
         self.setWindowTitle("QuietReader · 静读")
         self.setMinimumSize(380, 360)
         self.setWindowIcon(book_icon())
+        self.setAcceptDrops(True)
         self.save_timer = QTimer(self)
         self.save_timer.setSingleShot(True)
         self.save_timer.setInterval(350)
@@ -511,7 +545,7 @@ class MainWindow(QMainWindow):
         if files:
             self.add_book_paths(files)
 
-    def add_book_paths(self, paths, open_after=False):
+    def add_book_paths(self, paths, open_after=False, skipped_count=0):
         if self.loading or self.store.read_only:
             if self.store.read_only:
                 self.set_status("保存数据来自不支持的版本。已保护原文件，本次不会保存更改。")
@@ -579,8 +613,12 @@ class MainWindow(QMainWindow):
             return added
         self._refresh_shelf()
         self.save_state()
-        if new_count:
+        if new_count and skipped_count:
+            self.set_status("已添加 {count} 本书到书架，已跳过 {skipped} 个不支持的项目。", count=new_count, skipped=skipped_count)
+        elif new_count:
             self.set_status("已添加 {count} 本书到书架。", count=new_count)
+        elif added and skipped_count:
+            self.set_status("所选书籍已在书架中，已跳过 {skipped} 个不支持的项目。", skipped=skipped_count)
         elif added:
             self.set_status("所选书籍已在书架中。")
         if open_after and added:
@@ -1255,8 +1293,11 @@ class MainWindow(QMainWindow):
             self._pre_focus_maximized = self.isMaximized()
             self._chrome_visibility = {widget: not widget.isHidden() for widget in self.chrome_widgets}
         self._set_focus_adjust_active(False)
+        self._drag_has_valid = False
+        self._set_drag_hover_active(False)
         self._focus_opacity_override = None
         self.focus_mode = entering
+        self.setAcceptDrops(not entering)
         self.reader.focus_mode = entering
         self.setMinimumSize(180 if entering else 380, 100 if entering else 360)
         self.reader.setMinimumSize(80 if entering else 160, 40 if entering else 140)
@@ -1361,6 +1402,7 @@ class MainWindow(QMainWindow):
             colors(self.settings.theme, background_color), alpha,
             borderless=self.focus_mode,
             resize_outline=self.focus_mode and self._focus_adjust_active,
+            drop_highlight=self._drag_hover_active and not self.focus_mode,
         ))
 
     def apply_settings(self, settings):
@@ -1643,10 +1685,73 @@ class MainWindow(QMainWindow):
             height = max(minimum_height, height + dy)
         self.setGeometry(left, top, width, height)
 
+    def _set_drag_hover_active(self, active):
+        active = bool(active and not self.focus_mode)
+        if active == self._drag_hover_active:
+            return
+        self._drag_hover_active = active
+        self._apply_window_style()
+        if active:
+            will_open = self.book is None and self.main_pages.currentWidget() is self.reader_page
+            prompt = "松开鼠标添加并打开书籍。" if will_open else "松开鼠标添加到书架。"
+            self.status.setText(self.t(prompt))
+        else:
+            self.status.setText(self.t(self.status_source[0], **self.status_source[1]))
+
+    def dragEnterEvent(self, event):
+        if self.focus_mode or self.loading or self.closed or self.store.read_only or not event.mimeData().hasUrls():
+            event.ignore()
+            return
+        valid_paths, _skipped, _has_local = classify_dropped_urls(event.mimeData().urls())
+        if not valid_paths:
+            event.ignore()
+            return
+        self._drag_has_valid = True
+        self._set_drag_hover_active(True)
+        event.setDropAction(Qt.DropAction.CopyAction)
+        event.accept()
+
+    def dragMoveEvent(self, event):
+        if self.focus_mode or self.loading or self.closed or not self._drag_has_valid or not event.mimeData().hasUrls():
+            event.ignore()
+            return
+        event.setDropAction(Qt.DropAction.CopyAction)
+        event.accept()
+
+    def dragLeaveEvent(self, event):
+        self._drag_has_valid = False
+        self._set_drag_hover_active(False)
+        super().dragLeaveEvent(event)
+
+    def dropEvent(self, event):
+        self._drag_has_valid = False
+        self._set_drag_hover_active(False)
+        if self.focus_mode or self.loading or self.closed or not event.mimeData().hasUrls():
+            event.ignore()
+            return
+        valid_paths, skipped, has_local = classify_dropped_urls(event.mimeData().urls())
+        if not has_local:
+            event.ignore()
+            return
+        event.setDropAction(Qt.DropAction.CopyAction)
+        event.accept()
+        if self.store.read_only:
+            self.set_status("保存数据来自不支持的版本。已保护原文件，本次不会保存更改。")
+            return
+        if not valid_paths:
+            self.set_status("拖放仅支持本地 TXT 或 EPUB 文件。")
+            return
+        open_after = self.book is None and self.main_pages.currentWidget() is self.reader_page
+        added = self.add_book_paths(valid_paths, open_after=open_after, skipped_count=skipped)
+        if added and not open_after and self.main_pages.currentWidget() is self.shelf:
+            self.shelf.reveal_book(added[-1]["id"])
+
     def eventFilter(self, watched, event):
         event_type = event.type()
         if event_type == QEvent.Type.ApplicationDeactivate or (event_type == QEvent.Type.WindowDeactivate and watched is self):
             self._set_focus_adjust_active(False)
+            self._drag_has_valid = False
+            self._set_drag_hover_active(False)
             return False
         if not self.focus_mode:
             return super().eventFilter(watched, event)
