@@ -44,7 +44,6 @@ def stylesheet(palette, alpha=255, borderless=False, resize_outline=False, drop_
     QWidget#shelfToolbar {{ background: transparent; }}
     QLabel#brand {{ font-size: 22px; font-weight: 600; letter-spacing: 2px; color: {c['ink'] if 'on_accent' in c else c['accent']}; }}
     QLabel#eyebrow {{ font-size: 10px; letter-spacing: 2px; color: {c['muted']}; }}
-    QLabel#shelfTitle {{ font-size: 24px; font-weight: 600; color: {c['ink']}; padding: 2px 0; }}
     QLabel#bookTitle {{ font-size: 18px; font-weight: 600; }}
     QLabel#chapterTitle {{ font-size: 14px; color: {c['muted']}; }}
     QLabel#status {{ color: {c['muted']}; font-size: 11px; }}

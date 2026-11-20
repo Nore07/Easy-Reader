@@ -33,9 +33,6 @@ class ShelfPanel(QWidget):
         heading.setObjectName("shelfHeading")
         heading_layout = QHBoxLayout(heading)
         heading_layout.setContentsMargins(2, 0, 2, 0)
-        self.title = QLabel()
-        self.title.setObjectName("shelfTitle")
-        heading_layout.addWidget(self.title)
         heading_layout.addStretch(1)
         self.add_button = QPushButton()
         self.add_button.setObjectName("primary")
@@ -144,7 +141,6 @@ class ShelfPanel(QWidget):
 
     def retranslate(self, language):
         self.language = language
-        self.title.setText(tr("书架", language))
         self.add_button.setText(tr("添加书籍", language))
         self.add_button.setToolTip(tr("添加本地 TXT / EPUB 到书架 · Ctrl+O", language))
         self.add_button.setAccessibleName(tr("添加书籍", language))
