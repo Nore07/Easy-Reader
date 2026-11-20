@@ -40,7 +40,6 @@ def stylesheet(palette, alpha=255, borderless=False, resize_outline=False, drop_
     QWidget#sidebar {{ background: {c['side']}; border-radius: 7px; }}
     QWidget#pageNavigation {{ background: {c['side']}; border-radius: 7px; }}
     QWidget#titleBar {{ background: transparent; }}
-    QWidget#shelfHeading {{ background: transparent; }}
     QWidget#shelfToolbar {{ background: transparent; }}
     QLabel#brand {{ font-size: 22px; font-weight: 600; letter-spacing: 2px; color: {c['ink'] if 'on_accent' in c else c['accent']}; }}
     QLabel#eyebrow {{ font-size: 10px; letter-spacing: 2px; color: {c['muted']}; }}
