@@ -2,11 +2,12 @@ import json
 from math import isfinite
 from pathlib import Path
 
-from PySide6.QtCore import QMimeData, QSize, Qt, Signal
-from PySide6.QtGui import QDrag
+from PySide6.QtCore import QMimeData, QRect, QSize, Qt, Signal
+from PySide6.QtGui import QDrag, QFont, QFontMetrics, QPalette
 from PySide6.QtWidgets import (
-    QAbstractItemView, QComboBox, QHBoxLayout, QLabel, QListWidget,
-    QListWidgetItem, QPushButton, QTabWidget, QVBoxLayout, QWidget,
+    QApplication, QAbstractItemView, QComboBox, QHBoxLayout, QLabel, QListWidget,
+    QListWidgetItem, QPushButton, QStyle, QStyleOptionViewItem,
+    QStyledItemDelegate, QTabWidget, QVBoxLayout, QWidget,
 )
 
 from quietreader.i18n import tr
@@ -14,6 +15,84 @@ from quietreader.library.shelf import UNCLASSIFIED
 
 
 _BOOK_IDS_MIME_TYPE = "application/x-quietreader-book-ids"
+_BOOK_TITLE_ROLE = Qt.ItemDataRole.UserRole + 1
+_BOOK_DETAIL_ROLE = Qt.ItemDataRole.UserRole + 2
+_BOOK_PROGRESS_ROLE = Qt.ItemDataRole.UserRole + 3
+
+
+class BookItemDelegate(QStyledItemDelegate):
+    def paint(self, painter, option, index):
+        style_option = QStyleOptionViewItem(option)
+        self.initStyleOption(style_option, index)
+        style_option.text = ""
+        widget = style_option.widget
+        style = widget.style() if widget is not None else QApplication.style()
+        style.drawControl(QStyle.ControlElement.CE_ItemViewItem, style_option, painter, widget)
+
+        title = index.data(_BOOK_TITLE_ROLE) or ""
+        detail = index.data(_BOOK_DETAIL_ROLE) or ""
+        progress = index.data(_BOOK_PROGRESS_ROLE) or ""
+        painter.save()
+        painter.setClipRect(option.rect)
+        painter.setPen(option.palette.color(QPalette.ColorRole.Text))
+
+        title_font = QFont(option.font)
+        detail_font = QFont(option.font)
+        if detail_font.pointSize() > 0:
+            detail_font.setPointSize(max(8, detail_font.pointSize() - 1))
+        elif detail_font.pixelSize() > 0:
+            detail_font.setPixelSize(max(10, detail_font.pixelSize() - 1))
+
+        title_metrics = QFontMetrics(title_font)
+        detail_metrics = QFontMetrics(detail_font)
+        content = option.rect.adjusted(12, 5, -12, -5)
+        text_height = title_metrics.height() + detail_metrics.height() + 2
+        top = content.top() + max(0, (content.height() - text_height) // 2)
+        title_rect = QRect(content.left(), top, content.width(), title_metrics.height())
+        detail_rect = QRect(
+            content.left(), top + title_metrics.height() + 2,
+            content.width(), detail_metrics.height(),
+        )
+
+        painter.setFont(title_font)
+        visible_title = title_metrics.elidedText(
+            title, Qt.TextElideMode.ElideRight, title_rect.width(),
+        )
+        painter.drawText(
+            title_rect,
+            Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
+            visible_title,
+        )
+
+        painter.setFont(detail_font)
+        if progress:
+            progress_width = detail_metrics.horizontalAdvance(progress)
+            gap = detail_metrics.horizontalAdvance("  ")
+            progress_rect = QRect(
+                detail_rect.right() - progress_width + 1,
+                detail_rect.top(),
+                progress_width,
+                detail_rect.height(),
+            )
+            detail_width = max(0, detail_rect.width() - progress_width - gap)
+            detail_rect.setWidth(detail_width)
+            painter.drawText(
+                detail_rect,
+                Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
+                detail_metrics.elidedText(detail, Qt.TextElideMode.ElideRight, detail_width),
+            )
+            painter.drawText(
+                progress_rect,
+                Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter,
+                progress,
+            )
+        else:
+            painter.drawText(
+                detail_rect,
+                Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
+                detail_metrics.elidedText(detail, Qt.TextElideMode.ElideRight, detail_rect.width()),
+            )
+        painter.restore()
 
 
 class DraggableBookListWidget(QListWidget):
@@ -213,9 +292,12 @@ class ShelfPanel(QWidget):
         widget = widget_type()
         widget.setObjectName("shelfList")
         widget.setAccessibleName(accessible_name)
-        widget.setWordWrap(True)
         if openable:
+            widget.setWordWrap(False)
+            widget.setItemDelegate(BookItemDelegate(widget))
             widget.itemActivated.connect(self._open_item)
+        else:
+            widget.setWordWrap(True)
         return widget
 
     def retranslate(self, language):
@@ -320,19 +402,31 @@ class ShelfPanel(QWidget):
             title = record.get("title") or Path(record["path"]).stem
             chapter = record.get("reading_chapter")
             progress = record.get("reading_progress")
-            if isinstance(chapter, str) and chapter.strip() and type(progress) in (int, float) and isfinite(progress):
+            has_progress = type(progress) in (int, float) and isfinite(progress)
+            if has_progress:
                 percentage = f"{max(0, min(1, progress)):.0%}"
-                detail = tr("{chapter} · 全书 {progress}", self.language, chapter=chapter, progress=percentage)
-            elif record.get("_has_saved_position") or record.get("last_read"):
+                progress_label = tr("全书 {progress}", self.language, progress=percentage)
+            else:
+                percentage = "0%"
+                progress_label = ""
+            if isinstance(chapter, str) and chapter.strip():
+                detail = chapter.strip()
+            elif record.get("_has_saved_position") or record.get("last_read") or (has_progress and progress > 0):
                 detail = tr("打开书籍后更新进度", self.language)
             else:
-                detail = tr("尚未开始阅读 · 全书 0%", self.language)
-            item = QListWidgetItem(f"{title}\n{detail}")
+                detail = tr("尚未开始阅读", self.language)
+                if not has_progress:
+                    progress_label = tr("全书 {progress}", self.language, progress=percentage)
+            summary = " · ".join(part for part in (detail, progress_label) if part)
+            item = QListWidgetItem(f"{title}\n{summary}")
             item.setSizeHint(QSize(0, 64))
+            item.setData(_BOOK_TITLE_ROLE, title)
+            item.setData(_BOOK_DETAIL_ROLE, detail)
+            item.setData(_BOOK_PROGRESS_ROLE, progress_label)
             if record.get("author"):
-                item.setToolTip(f"{record['author']}\n{detail}\n{record['path']}")
+                item.setToolTip(f"{record['author']}\n{summary}\n{record['path']}")
             else:
-                item.setToolTip(f"{detail}\n{record['path']}")
+                item.setToolTip(f"{summary}\n{record['path']}")
             item.setData(Qt.ItemDataRole.UserRole, record.get("id", ""))
             widget.addItem(item)
 

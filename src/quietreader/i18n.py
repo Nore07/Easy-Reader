@@ -88,6 +88,7 @@ EN = {
     "{encoding} · {count} 个章节 / 分段 · 进度自动保存{author}": "{encoding} · {count} chapters / sections · Progress saved automatically{author}",
     "{page} / {pages} 页 · 本章 {progress}": "Page {page} / {pages} · Chapter {progress}",
     "全书进度：{progress}": "Book progress: {progress}", "全书进度：--": "Book progress: --",
+    "全书 {progress}": "Book {progress}", "尚未开始阅读": "Not started",
     "{chapter} · 全书 {progress}": "{chapter} · Book {progress}",
     "尚未开始阅读 · 全书 0%": "Not started · Book 0%", "打开书籍后更新进度": "Open this book to refresh its progress",
     "书内链接目标不可用。": "This link points to a location that is unavailable in the reading order.",
