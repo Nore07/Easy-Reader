@@ -24,6 +24,7 @@ from quietreader.i18n import tr, install_qt_translator
 from quietreader.ui.layout_panel import LayoutPanel
 from quietreader.ui.book_info import BookInfoPanel
 from quietreader.ui.file_dialog import BookFileDialog, default_book_directory
+from quietreader.ui.toast import ToastNotice
 from quietreader.persistence.store import MAX_BOOKMARKS, MAX_BOOKMARK_NOTE, MAX_BOOK_RECORDS
 from quietreader.library.shelf import ShelfError, ShelfManager, UNCLASSIFIED, book_id_for_path
 from quietreader.ui.shelf import ShelfPanel
@@ -462,6 +463,7 @@ class MainWindow(QMainWindow):
         self.emergency_shortcut = QShortcut(QKeySequence(self.settings.emergency_key), self)
         self.emergency_shortcut.setAutoRepeat(False)
         self.emergency_shortcut.activated.connect(self.emergency_exit)
+        self.toast = ToastNotice(self.surface)
         self._update_progress()
 
     def _setup_system(self):
@@ -803,7 +805,7 @@ class MainWindow(QMainWindow):
         self.pending_path = Path(path)
         self.loading = True
         self.open_button.setEnabled(False)
-        self.set_status("正在后台导入书籍…")
+        self.set_status("正在后台导入书籍…", notify=False)
         self.worker = ImportTask(path, encoding)
         self.worker.signals.loaded.connect(self._loaded)
         self.worker.signals.failed.connect(self._failed)
@@ -858,7 +860,7 @@ class MainWindow(QMainWindow):
         self.store.state["last_book"] = book.id
         self._update_progress()
         self._refresh_shelf()
-        self.set_status("{encoding} · {count} 个章节 / 分段 · 进度自动保存{author}", encoding=book.encoding, count=len(book.sections), author=f" · {book.author}" if book.author else "")
+        self.set_status("{encoding} · {count} 个章节 / 分段 · 进度自动保存{author}", notify=False, encoding=book.encoding, count=len(book.sections), author=f" · {book.author}" if book.author else "")
         self.encoding_bar.hide()
         self.encoding_button.setVisible(book.encoding != "EPUB")
         self.encoding.setCurrentIndex(max(0, self.encoding.findData(book.encoding)))
@@ -1280,10 +1282,25 @@ class MainWindow(QMainWindow):
     def t(self, source, **values):
         return tr(source, self.settings.language, **values)
 
-    def set_status(self, source, **values):
+    def _toast_bottom_margin(self):
+        if hasattr(self, "main_pages") and self.main_pages.currentWidget() is self.reader_page and hasattr(self, "progress") and not self.progress.isHidden():
+            anchor_y = self.progress.mapTo(self.surface, QPoint(0, 0)).y()
+            if anchor_y > 0:
+                return max(44, self.surface.height() - anchor_y + 12)
+            return 96
+        if hasattr(self, "status") and not self.status.isHidden():
+            anchor_y = self.status.mapTo(self.surface, QPoint(0, 0)).y()
+            if anchor_y > 0:
+                return max(44, self.surface.height() - anchor_y + 14)
+        return 44
+
+    def set_status(self, source, notify=True, **values):
         self.status_source = (source, values)
         self.status.setProperty("translation_source", None)
-        self.status.setText(self.t(source, **values))
+        text = self.t(source, **values)
+        self.status.setText(text)
+        if notify and hasattr(self, "toast") and not self.focus_mode and not self.closed:
+            self.toast.show_message(text, bottom_margin=self._toast_bottom_margin())
 
     def _set_shelf_error(self, error):
         message = str(error)
@@ -1342,7 +1359,9 @@ class MainWindow(QMainWindow):
             self.tray.setToolTip("QuietReader")
         if not self.book:
             self.setWindowTitle("QuietReader")
-        self.set_status(self.status_source[0], **self.status_source[1])
+        self.set_status(self.status_source[0], notify=False, **self.status_source[1])
+        if hasattr(self, "toast") and not self.toast.isHidden():
+            self.toast.update_text(self.status.text())
 
     def _apply_window_style(self):
         if self.focus_mode:
@@ -1403,6 +1422,8 @@ class MainWindow(QMainWindow):
         if self.focus_mode:
             for widget in self.chrome_widgets:
                 widget.hide()
+            if hasattr(self, "toast"):
+                self.toast.dismiss()
         self.schedule_save()
 
     def _sync_reader_navigation_labels(self):
@@ -1546,6 +1567,18 @@ class MainWindow(QMainWindow):
             self.brand.setVisible(not self.focus_mode)
             self._update_window_controls()
             self._sync_reader_navigation_labels()
+        if hasattr(self, "toast") and not self.toast.isHidden():
+            self.toast.reposition(self._toast_bottom_margin())
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        if hasattr(self, "toast") and not self.toast.isHidden():
+            self.toast.reposition(self._toast_bottom_margin())
+
+    def hideEvent(self, event):
+        if hasattr(self, "toast"):
+            self.toast.dismiss()
+        super().hideEvent(event)
 
     def changeEvent(self, event):
         super().changeEvent(event)
@@ -1711,6 +1744,8 @@ class MainWindow(QMainWindow):
             app.removeEventFilter(self)
         self.save_state()
         self.save_timer.stop()
+        if hasattr(self, "toast"):
+            self.toast.dismiss()
         self.closed = True
         self.pool.waitForDone()
         if self.hotkey:
