@@ -1,20 +1,98 @@
+import json
 from math import isfinite
 from pathlib import Path
 
-from PySide6.QtCore import QSize, Qt, Signal
+from PySide6.QtCore import QMimeData, QSize, Qt, Signal
+from PySide6.QtGui import QDrag
 from PySide6.QtWidgets import (
-    QComboBox, QHBoxLayout, QLabel, QListWidget, QListWidgetItem, QPushButton,
-    QTabWidget, QVBoxLayout, QWidget,
+    QAbstractItemView, QComboBox, QHBoxLayout, QLabel, QListWidget,
+    QListWidgetItem, QPushButton, QTabWidget, QVBoxLayout, QWidget,
 )
 
 from quietreader.i18n import tr
 from quietreader.library.shelf import UNCLASSIFIED
 
 
+_BOOK_IDS_MIME_TYPE = "application/x-quietreader-book-ids"
+
+
+class DraggableBookListWidget(QListWidget):
+    def startDrag(self, supported_actions):
+        book_ids = [
+            item.data(Qt.ItemDataRole.UserRole)
+            for item in self.selectedItems()
+            if item.data(Qt.ItemDataRole.UserRole)
+        ]
+        if not book_ids:
+            return
+        mime_data = QMimeData()
+        mime_data.setData(_BOOK_IDS_MIME_TYPE, json.dumps(book_ids).encode("utf-8"))
+        drag = QDrag(self)
+        drag.setMimeData(mime_data)
+        drag.exec(Qt.DropAction.MoveAction)
+
+
+class CategoryDropListWidget(QListWidget):
+    books_dropped = Signal(list, str)
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setAcceptDrops(True)
+        self.setDragDropMode(QAbstractItemView.DragDropMode.DropOnly)
+        self.setDropIndicatorShown(True)
+
+    @staticmethod
+    def _book_ids(mime_data):
+        if not mime_data.hasFormat(_BOOK_IDS_MIME_TYPE):
+            return []
+        try:
+            values = json.loads(bytes(mime_data.data(_BOOK_IDS_MIME_TYPE)).decode("utf-8"))
+        except (UnicodeDecodeError, json.JSONDecodeError):
+            return []
+        if not isinstance(values, list):
+            return []
+        return list(dict.fromkeys(value for value in values if isinstance(value, str) and value))
+
+    def _drop_target(self, event):
+        book_ids = self._book_ids(event.mimeData())
+        item = self.itemAt(event.position().toPoint())
+        if not book_ids or item is None:
+            return None
+        category = item.data(Qt.ItemDataRole.UserRole)
+        if not isinstance(category, str) or not category:
+            return None
+        return item, book_ids, category
+
+    def dragEnterEvent(self, event):
+        if self._drop_target(event) is None:
+            event.ignore()
+            return
+        event.setDropAction(Qt.DropAction.MoveAction)
+        event.accept()
+
+    def dragMoveEvent(self, event):
+        if self._drop_target(event) is None:
+            event.ignore()
+            return
+        event.setDropAction(Qt.DropAction.MoveAction)
+        event.accept()
+
+    def dropEvent(self, event):
+        target = self._drop_target(event)
+        if target is None:
+            event.ignore()
+            return
+        _item, book_ids, category = target
+        event.setDropAction(Qt.DropAction.MoveAction)
+        event.accept()
+        self.books_dropped.emit(book_ids, category)
+
+
 class ShelfPanel(QWidget):
     add_requested = Signal()
     open_requested = Signal(str)
     move_requested = Signal(str, str)
+    move_books_requested = Signal(list, str)
     remove_requested = Signal(str)
     create_category_requested = Signal()
     delete_category_requested = Signal(str)
@@ -110,11 +188,19 @@ class ShelfPanel(QWidget):
         category_content = QHBoxLayout()
         category_content.setContentsMargins(0, 0, 0, 0)
         category_content.setSpacing(12)
-        self.category_list = self._book_list("书籍分类", openable=False)
+        self.category_list = self._book_list(
+            "书籍分类", openable=False, widget_type=CategoryDropListWidget,
+        )
+        self.category_list.books_dropped.connect(self.move_books_requested)
         self.category_list.setMinimumWidth(150)
         self.category_list.setMaximumWidth(235)
         self.category_list.currentRowChanged.connect(self._refresh_category_books)
-        self.category_books = self._book_list("分类中的书籍")
+        self.category_books = self._book_list(
+            "分类中的书籍", widget_type=DraggableBookListWidget,
+        )
+        self.category_books.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
+        self.category_books.setDragEnabled(True)
+        self.category_books.setDragDropMode(QAbstractItemView.DragDropMode.DragOnly)
         category_content.addWidget(self.category_list)
         category_content.addWidget(self.category_books, 1)
         category_layout.addLayout(category_content, 1)
@@ -123,8 +209,8 @@ class ShelfPanel(QWidget):
         outer.addWidget(self.tabs, 1)
         self.retranslate("system")
 
-    def _book_list(self, accessible_name, openable=True):
-        widget = QListWidget()
+    def _book_list(self, accessible_name, openable=True, widget_type=QListWidget):
+        widget = widget_type()
         widget.setObjectName("shelfList")
         widget.setAccessibleName(accessible_name)
         widget.setWordWrap(True)
@@ -143,6 +229,8 @@ class ShelfPanel(QWidget):
             self.tabs.setTabText(index, tr(source, language))
         self.category_create.setText(tr("新建分类", language))
         self.category_delete.setText(tr("删除分类", language))
+        self.category_list.setToolTip(tr("将右侧书籍拖到分类上即可快速移动。", language))
+        self.category_books.setToolTip(tr("按住 Ctrl 或 Shift 多选，再拖到左侧分类。", language))
         self.all_move.setText(tr("移动", language))
         self.all_move.setToolTip(tr("移动到分类", language))
         self.all_move.setAccessibleName(tr("移动到分类", language))
@@ -186,6 +274,16 @@ class ShelfPanel(QWidget):
                 return True
         return False
 
+    def select_category(self, category):
+        self.tabs.setCurrentIndex(2)
+        for row in range(self.category_list.count()):
+            item = self.category_list.item(row)
+            if item.data(Qt.ItemDataRole.UserRole) == category:
+                self.category_list.setCurrentRow(row)
+                self.category_list.scrollToItem(item)
+                return True
+        return False
+
     def _refresh_lists(self):
         if not hasattr(self, "all_books"):
             return
@@ -210,6 +308,7 @@ class ShelfPanel(QWidget):
         for name in targets:
             item = QListWidgetItem(tr("未分类", self.language) if name == UNCLASSIFIED else name)
             item.setData(Qt.ItemDataRole.UserRole, name)
+            item.setFlags(item.flags() | Qt.ItemFlag.ItemIsDropEnabled)
             self.category_list.addItem(item)
         row = next((i for i in range(self.category_list.count()) if self.category_list.item(i).data(Qt.ItemDataRole.UserRole) == category_name), 0)
         self.category_list.setCurrentRow(row)
@@ -255,9 +354,22 @@ class ShelfPanel(QWidget):
             self.open_requested.emit(book_id)
 
     def _move_selected(self, widget, target):
-        item = widget.currentItem()
-        if item is not None and target.currentData():
-            self.move_requested.emit(item.data(Qt.ItemDataRole.UserRole), target.currentData())
+        book_ids = [
+            item.data(Qt.ItemDataRole.UserRole)
+            for item in widget.selectedItems()
+            if item.data(Qt.ItemDataRole.UserRole)
+        ]
+        if not book_ids and widget.currentItem() is not None:
+            book_id = widget.currentItem().data(Qt.ItemDataRole.UserRole)
+            if book_id:
+                book_ids = [book_id]
+        category = target.currentData()
+        if not book_ids or not category:
+            return
+        if len(book_ids) == 1:
+            self.move_requested.emit(book_ids[0], category)
+        else:
+            self.move_books_requested.emit(book_ids, category)
 
     def _remove_selected(self, widget):
         item = widget.currentItem()

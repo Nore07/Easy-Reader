@@ -136,4 +136,6 @@ def stylesheet(palette, alpha=255, borderless=False, resize_outline=False, drop_
     QTreeView#fileDialogView QScrollBar::add-page:vertical, QTreeView#fileDialogView QScrollBar::sub-page:vertical, QListWidget#fileDialogPlaces QScrollBar::add-page:vertical, QListWidget#fileDialogPlaces QScrollBar::sub-page:vertical {{ background: transparent; }}
     QFrame#toastNotice {{ background: {c['selected']}; border: 1px solid {c['accent']}; border-radius: 10px; }}
     QLabel#toastLabel {{ color: {c['ink']}; background: transparent; font-size: 13px; font-weight: 500; }}
+    QPushButton#toastAction {{ color: {c['accent']}; background: {c['paper']}; border: 1px solid {c['accent']}; border-radius: 6px; padding: 4px 10px; min-height: 20px; }}
+    QPushButton#toastAction:hover {{ background: {c['button']}; }}
     """
